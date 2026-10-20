@@ -22,6 +22,11 @@ module "lambda" {
     patterns         = try(each.value.patterns, null)
     pip_requirements = try(each.value.pip_requirements, null)
     npm_requirements = try(each.value.npm_requirements, null)
+    },
+    {
+      path          = abspath(format("%s/../backend/_shared", path.module))
+      prefix_in_zip = "_shared"
+      patterns      = ["!__pycache__/.*"]
   }]
 
   vpc_security_group_ids = data.aws_security_groups.this.ids
