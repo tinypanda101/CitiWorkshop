@@ -9,6 +9,7 @@ import { ROLE_NAMES } from '../roles'
 // `roles` lists who sees the link; leave it out for everyone.
 const MENU = [
   { to: '/', label: 'Dashboard' },
+  { to: '/tickets', label: 'Tickets' },
   { to: '/facilities', label: 'Facilities', roles: ['admin'] },
 ]
 
