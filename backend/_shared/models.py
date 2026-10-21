@@ -48,7 +48,8 @@ class User(Base):
     created_at: Mapped[datetime] = created_at_column()
     updated_at: Mapped[datetime] = updated_at_column()
 
-    engineer_profile: Mapped["EngineerProfile | None"] = relationship(back_populates="user")
+    # Setting engineer_profile to None deletes the profile row (an "orphan").
+    engineer_profile: Mapped["EngineerProfile | None"] = relationship(back_populates="user", cascade="all, delete-orphan")
 
 
 class EngineerProfile(Base):

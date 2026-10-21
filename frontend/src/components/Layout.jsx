@@ -11,6 +11,8 @@ const MENU = [
   { to: '/', label: 'Dashboard' },
   { to: '/tickets', label: 'Tickets' },
   { to: '/facilities', label: 'Facilities', roles: ['admin'] },
+  { to: '/users', label: 'Users', roles: ['admin'] },
+  { to: '/account', label: 'My account' },
 ]
 
 export default function Layout({ children }) {

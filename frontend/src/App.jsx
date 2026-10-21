@@ -9,6 +9,8 @@ import HomePage from './pages/HomePage'
 import FacilitiesPage from './pages/FacilitiesPage'
 import TicketsPage from './pages/TicketsPage'
 import TicketDetailPage from './pages/TicketDetailPage'
+import UsersPage from './pages/UsersPage'
+import AccountPage from './pages/AccountPage'
 
 // Shows the page only when someone is logged in; otherwise sends them to /login.
 // With `roles`, only those roles get in; everyone else goes back to the home page.
@@ -35,6 +37,8 @@ export default function App() {
       <Route path="/tickets" element={<RequireAuth><TicketsPage /></RequireAuth>} />
       <Route path="/tickets/:id" element={<RequireAuth><TicketDetailPage /></RequireAuth>} />
       <Route path="/facilities" element={<RequireAuth roles={['admin']}><FacilitiesPage /></RequireAuth>} />
+      <Route path="/users" element={<RequireAuth roles={['admin']}><UsersPage /></RequireAuth>} />
+      <Route path="/account" element={<RequireAuth><AccountPage /></RequireAuth>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
