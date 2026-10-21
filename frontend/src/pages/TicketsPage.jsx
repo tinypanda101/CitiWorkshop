@@ -10,23 +10,36 @@ import {
 import Layout from '../components/Layout'
 import { PriorityChip, StatusChip } from '../components/TicketChips'
 import { api } from '../services/api'
+import { useAuth } from '../services/AuthContext'
 import { formatDate, formatLocation, PRIORITY_NAMES, STATUS_NAMES } from '../ticketLabels'
 
-const NO_FILTERS = { status: '', priority: '', category_id: '', building_id: '', floor_id: '', from: '', to: '' }
+const NO_FILTERS = {
+  status: '', priority: '', category_id: '', building_id: '', floor_id: '', assigned_to: '', escalation: '',
+  from: '', to: '',
+}
+
+const ESCALATION_NAMES = { pending: 'Waiting for review', approved: 'Approved', rejected: 'Rejected' }
 
 const SORTS = { newest: 'Newest first', oldest: 'Oldest first', priority: 'Highest priority first' }
 
 export default function TicketsPage() {
   const navigate = useNavigate()
   const location = useLocation()
+  const { user } = useAuth()
+  const isAdmin = user.role === 'admin'
   const [search, setSearch] = useState('') // what is typed in the search box
   const [q, setQ] = useState('') // the search sent to the API, a moment after typing stops
-  const [filters, setFilters] = useState(NO_FILTERS)
+  // Filters can come in the link, e.g. /tickets?status=blocked from a dashboard tile.
+  const [filters, setFilters] = useState(() => {
+    const fromLink = Object.fromEntries(new URLSearchParams(location.search))
+    return Object.fromEntries(Object.entries(NO_FILTERS).map(([key, value]) => [key, fromLink[key] ?? value]))
+  })
   const [sort, setSort] = useState('newest')
   const [tickets, setTickets] = useState(null) // null = still loading
   const [categories, setCategories] = useState([])
   const [buildings, setBuildings] = useState([])
   const [floors, setFloors] = useState([])
+  const [engineers, setEngineers] = useState([]) // admins only, for the Assigned to filter
   const [error, setError] = useState('')
   // A message passed from another page, e.g. "TKT-1005 was deleted".
   const [message, setMessage] = useState(location.state?.message || '')
@@ -35,7 +48,8 @@ export default function TicketsPage() {
     Promise.all([api('facilities', '/categories'), api('facilities', '/buildings')])
       .then(([newCategories, newBuildings]) => { setCategories(newCategories); setBuildings(newBuildings) })
       .catch((err) => setError(err.message))
-  }, [])
+    if (isAdmin) api('users', '/engineers').then(setEngineers).catch((err) => setError(err.message))
+  }, [isAdmin])
 
   useEffect(() => {
     if (!filters.building_id) return
@@ -80,6 +94,11 @@ export default function TicketsPage() {
     filters.category_id && { key: 'category_id', label: `Category: ${nameOf(categories, filters.category_id)}` },
     filters.building_id && { key: 'building_id', label: `Building: ${nameOf(buildings, filters.building_id)}` },
     filters.floor_id && { key: 'floor_id', label: `Floor: ${nameOf(floors, filters.floor_id)}` },
+    filters.assigned_to && {
+      key: 'assigned_to',
+      label: `Assigned to: ${filters.assigned_to === 'none' ? 'Nobody' : nameOf(engineers, filters.assigned_to, 'full_name')}`,
+    },
+    filters.escalation && { key: 'escalation', label: `Escalation: ${ESCALATION_NAMES[filters.escalation]}` },
     filters.from && { key: 'from', label: `From: ${filters.from}` },
     filters.to && { key: 'to', label: `To: ${filters.to}` },
   ].filter(Boolean)
@@ -120,6 +139,17 @@ export default function TicketsPage() {
             <TextField {...selectProps('floor_id', 'Floor')} disabled={!filters.building_id}>
               <MenuItem value="">Any</MenuItem>
               {floors.map((f) => <MenuItem key={f.id} value={f.id}>{f.name}</MenuItem>)}
+            </TextField>
+            {isAdmin && (
+              <TextField {...selectProps('assigned_to', 'Assigned to')}>
+                <MenuItem value="">Anyone</MenuItem>
+                <MenuItem value="none">Nobody yet</MenuItem>
+                {engineers.map((e) => <MenuItem key={e.id} value={e.id}>{e.full_name}</MenuItem>)}
+              </TextField>
+            )}
+            <TextField {...selectProps('escalation', 'Escalation')}>
+              <MenuItem value="">Any</MenuItem>
+              {Object.entries(ESCALATION_NAMES).map(([value, name]) => <MenuItem key={value} value={value}>{name}</MenuItem>)}
             </TextField>
             <TextField size="small" type="date" label="Reported from" value={filters.from}
               onChange={(e) => setFilter('from', e.target.value)} slotProps={{ inputLabel: { shrink: true } }} />

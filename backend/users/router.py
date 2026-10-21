@@ -11,16 +11,14 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from _shared.assignment import assign_waiting_tickets
 from _shared.database import get_db
 from _shared.errors import AppError
-from _shared.models import EngineerProfile, Ticket, User
+from _shared.models import UNFINISHED, EngineerProfile, Ticket, User
 from _shared.security import get_current_user, hash_password, require_admin
 from schemas import AccountCreate, AccountEdit, AccountOut, AvailabilityIn, EngineerOut
 
 router = APIRouter()
-
-UNFINISHED = ("open", "in_progress", "blocked")
-
 
 def account_out(user):
     profile = user.engineer_profile
@@ -42,7 +40,8 @@ def apply_role(db, user, body):
     """
     Saves the role, and keeps the engineer profile in step with it:
     becoming an engineer creates or updates the profile; stopping being one (or being
-    deactivated) removes it and unassigns their unfinished tickets so an admin can reassign them.
+    deactivated) removes it and unassigns their unfinished tickets, which go back to Open and
+    are handed to other engineers automatically (by the caller) where possible.
     """
     is_engineer = body.role == "engineer" and body.is_active
     if body.role == "engineer" and body.specialty is None:
@@ -60,6 +59,7 @@ def apply_role(db, user, body):
         for ticket in db.scalars(select(Ticket).where(Ticket.assignee_id == user.id, Ticket.status.in_(UNFINISHED))):
             ticket.assignee_id = None
             ticket.assigned_at = None
+            ticket.status = "open"
 
     user.role = body.role
 
@@ -90,6 +90,8 @@ def create_account(body: AccountCreate, admin: User = Depends(require_admin), db
                 is_active=body.is_active)
     apply_role(db, user, body)
     db.add(user)
+    db.flush()
+    assign_waiting_tickets(db)  # a new or changed engineer may be able to take waiting tickets
     db.commit()
     db.refresh(user)
     return account_out(user)
@@ -106,6 +108,8 @@ def edit_account(user_id: int, body: AccountEdit, admin: User = Depends(require_
     user.full_name = body.full_name
     user.is_active = body.is_active
     apply_role(db, user, body)
+    db.flush()
+    assign_waiting_tickets(db)  # a new or changed engineer may be able to take waiting tickets
     db.commit()
     db.refresh(user)
     return account_out(user)
@@ -139,5 +143,7 @@ def my_engineer_profile(user: User = Depends(get_current_user)):
 @router.put("/engineers/me/availability", response_model=AccountOut)
 def set_my_availability(body: AvailabilityIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     own_profile(user).availability = body.availability
+    db.flush()
+    assign_waiting_tickets(db)  # a new or changed engineer may be able to take waiting tickets
     db.commit()
     return account_out(user)

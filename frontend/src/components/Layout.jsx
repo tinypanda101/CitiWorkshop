@@ -1,15 +1,16 @@
 // The top bar every signed-in page uses: app name, menu, your name and role, Log out.
-// Which menu links you see depends on your role.
+// Which menu links you see depends on your role; engineers also set their availability here.
 
 import { NavLink } from 'react-router-dom'
 import { AppBar, Box, Button, Chip, Toolbar, Typography } from '@mui/material'
 import { useAuth } from '../services/AuthContext'
 import { ROLE_NAMES } from '../roles'
+import AvailabilitySelect from './AvailabilitySelect'
 
 // `roles` lists who sees the link; leave it out for everyone.
 const MENU = [
   { to: '/', label: 'Dashboard' },
-  { to: '/tickets', label: 'Tickets' },
+  { to: '/tickets', label: 'Tickets', roles: ['admin'] }, // everyone else works from their dashboard
   { to: '/facilities', label: 'Facilities', roles: ['admin'] },
   { to: '/users', label: 'Users', roles: ['admin'] },
   { to: '/account', label: 'My account' },
@@ -32,6 +33,7 @@ export default function Layout({ children }) {
               </Button>
             ))}
           </Box>
+          {user.role === 'engineer' && <AvailabilitySelect />}
           <Typography variant="body2">{user.full_name}</Typography>
           <Chip label={ROLE_NAMES[user.role]} size="small" sx={{ color: 'inherit', bgcolor: 'rgba(255,255,255,0.18)' }} />
           <Button color="inherit" onClick={logout}>Log out</Button>

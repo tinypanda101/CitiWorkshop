@@ -56,6 +56,60 @@ class TicketIn(TicketEdit):
     priority: Literal["low", "medium"] = "low"
 
 
+class AssignIn(BaseModel):
+    """The engineer to assign, or None to unassign."""
+
+    assignee_id: int | None = None
+
+
+class StatusIn(BaseModel):
+    """Moving a ticket. Blocked needs a reason, Resolved needs a summary (checked in the router)."""
+
+    status: Literal["open", "assigned", "in_progress", "blocked", "resolved", "closed"]
+    blocked_reason: str | None = None
+    resolution_summary: str | None = None
+
+
+class PriorityIn(BaseModel):
+    priority: Literal["low", "medium", "high", "critical"]
+
+
+class EscalationRequest(BaseModel):
+    """An employee asking for High or Critical, with a reason."""
+
+    requested_priority: Literal["high", "critical"]
+    reason: str
+
+    @field_validator("reason")
+    @classmethod
+    def clean_reason(cls, value):
+        return not_blank(value, "Please say why it needs a higher priority")
+
+
+class EscalationDecision(BaseModel):
+    decision: Literal["approve", "reject"]
+
+
+class NoteIn(BaseModel):
+    body: str
+
+    @field_validator("body")
+    @classmethod
+    def clean_body(cls, value):
+        return not_blank(value, "Please write something")
+
+
+class NoteOut(BaseModel):
+    id: int
+    ticket_id: int
+    author_id: int
+    author_name: str
+    author_role: str
+    body: str
+    created_at: datetime
+    updated_at: datetime
+
+
 class TicketOut(BaseModel):
     id: int
     number: str  # TKT-1001
@@ -74,12 +128,16 @@ class TicketOut(BaseModel):
     seat_code: str | None
     reporter_id: int
     reporter_name: str
+    reporter_email: str  # so the engineer can contact them
     assignee_id: int | None
     assignee_name: str | None
     escalation_status: str
+    requested_priority: str | None
+    escalation_reason: str | None
     blocked_reason: str | None
     resolution_summary: str | None
     created_at: datetime
+    due_at: datetime  # 3 days after created_at
     assigned_at: datetime | None
     resolved_at: datetime | None
     updated_at: datetime

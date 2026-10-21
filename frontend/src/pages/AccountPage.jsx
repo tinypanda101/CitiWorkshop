@@ -1,46 +1,13 @@
-// My account: who you are, change your password, and (for engineers) your availability.
+// My account: who you are and changing your password. (Engineers set their availability in the top bar.)
 
-import { useEffect, useState } from 'react'
-import {
-  Alert, Button, Paper, Snackbar, Stack, TextField, ToggleButton, ToggleButtonGroup, Typography,
-} from '@mui/material'
+import { useState } from 'react'
+import { Alert, Button, Paper, Snackbar, Stack, TextField, Typography } from '@mui/material'
 import Layout from '../components/Layout'
 import { api } from '../services/api'
 import { useAuth } from '../services/AuthContext'
-import { AVAILABILITY_NAMES, ROLE_NAMES } from '../roles'
+import { ROLE_NAMES } from '../roles'
 
 const NO_PASSWORDS = { current_password: '', new_password: '', confirm: '' }
-
-function AvailabilityCard({ onMessage }) {
-  const [availability, setAvailability] = useState(null)
-  const [error, setError] = useState('')
-
-  useEffect(() => {
-    api('users', '/engineers/me').then((me) => setAvailability(me.availability)).catch((err) => setError(err.message))
-  }, [])
-
-  async function change(value) {
-    if (!value) return // clicking the selected button again
-    try {
-      const me = await api('users', '/engineers/me/availability', { method: 'PUT', body: { availability: value } })
-      setAvailability(me.availability)
-      onMessage(`You are now ${AVAILABILITY_NAMES[me.availability].toLowerCase()}`)
-    } catch (err) {
-      setError(err.message)
-    }
-  }
-
-  return (
-    <Paper variant="outlined" sx={{ p: 3 }}>
-      <Typography variant="h6" component="h2" gutterBottom>Availability</Typography>
-      <Typography color="text.secondary" sx={{ mb: 2 }}>Admins see this when they assign tickets.</Typography>
-      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-      <ToggleButtonGroup exclusive color="primary" value={availability} onChange={(e, value) => change(value)}>
-        {Object.entries(AVAILABILITY_NAMES).map(([value, name]) => <ToggleButton key={value} value={value}>{name}</ToggleButton>)}
-      </ToggleButtonGroup>
-    </Paper>
-  )
-}
 
 export default function AccountPage() {
   const { user } = useAuth()
@@ -90,8 +57,6 @@ export default function AccountPage() {
           <Typography variant="h6" component="h2">{user.full_name}</Typography>
           <Typography color="text.secondary">{user.email} · {ROLE_NAMES[user.role]}</Typography>
         </Paper>
-
-        {user.role === 'engineer' && <AvailabilityCard onMessage={setMessage} />}
 
         <Paper variant="outlined" sx={{ p: 3 }}>
           <Typography variant="h6" component="h2" gutterBottom>Change password</Typography>

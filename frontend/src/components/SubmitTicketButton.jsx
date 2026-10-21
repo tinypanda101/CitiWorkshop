@@ -1,12 +1,13 @@
 // The "Submit a ticket" button: opens the popup, then shows "TKT-1001 submitted" with a View link.
-// Used on the dashboard. `onSubmitted` lets the page react (e.g. reload its counts in step 9).
+// Used on the dashboards. `onSubmitted` lets the page reload its numbers; `onView` replaces
+// the View link (employees open the ticket in their popup instead of the full page).
 
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button, Snackbar } from '@mui/material'
 import TicketDialog from './TicketDialog'
 
-export default function SubmitTicketButton({ onSubmitted, ...buttonProps }) {
+export default function SubmitTicketButton({ onSubmitted, onView, ...buttonProps }) {
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [submitted, setSubmitted] = useState(null) // the ticket just submitted
@@ -25,7 +26,10 @@ export default function SubmitTicketButton({ onSubmitted, ...buttonProps }) {
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
         message={submitted && `${submitted.number} submitted`}
         action={submitted && (
-          <Button color="inherit" size="small" onClick={() => navigate(`/tickets/${submitted.id}`)}>View</Button>
+          <Button color="inherit" size="small"
+            onClick={() => { if (onView) onView(submitted); else navigate(`/tickets/${submitted.id}`); setSubmitted(null) }}>
+            View
+          </Button>
         )} />
     </>
   )

@@ -1,30 +1,50 @@
 """
-The tickets endpoints: submit, list (with search and filters), view, edit and delete.
+The tickets endpoints: submit, list (with search and filters), view, edit, delete, assign,
+the status workflow, priority, escalation requests and notes.
 
 Who sees what: employees see the tickets they reported, engineers also see the ones
 assigned to them, admins see everything. A ticket you can't see answers "not found".
 """
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import case, or_, select
 from sqlalchemy.orm import Session
 
+from _shared.assignment import assign, assign_waiting_tickets
 from _shared.database import get_db
 from _shared.errors import AppError
-from _shared.models import Building, Floor, Seat, Ticket, TicketCategory, User, ticket_number
+from _shared.models import (
+    Building, Floor, Seat, Ticket, TicketCategory, TicketNote, TicketView, User, due_at, ticket_number,
+)
 from _shared.security import get_current_user, require_admin
-from schemas import TicketAdminEdit, TicketIn, TicketOut
+from schemas import (
+    AssignIn, EscalationDecision, EscalationRequest, NoteIn, NoteOut, PriorityIn, StatusIn,
+    TicketAdminEdit, TicketIn, TicketOut,
+)
 
 router = APIRouter()
 
-Status = Literal["open", "in_progress", "blocked", "resolved", "closed"]
+Status = Literal["open", "assigned", "in_progress", "blocked", "resolved", "closed"]
 Priority = Literal["low", "medium", "high", "critical"]
 
 # For "highest priority first": critical = 1 ... low = 4.
 PRIORITY_ORDER = case({"critical": 1, "high": 2, "medium": 3, "low": 4}, value=Ticket.priority)
+PRIORITY_RANK = {"low": 1, "medium": 2, "high": 3, "critical": 4}
+
+# The status workflow for engineers: from each status, where they may move a ticket next.
+# Open -> Assigned happens by assigning (automatically or by an admin), not by a status change.
+# Admins can move any ticket to In Progress, Blocked, Resolved or Closed.
+ENGINEER_MOVES = {
+    "open": [],
+    "assigned": ["in_progress"],
+    "in_progress": ["blocked", "resolved"],
+    "blocked": ["in_progress"],
+    "resolved": ["in_progress", "closed"],
+    "closed": [],
+}
 
 
 def visible_tickets(user):
@@ -86,12 +106,16 @@ def ticket_out(ticket):
         seat_code=ticket.seat.code if ticket.seat else None,
         reporter_id=ticket.reporter_id,
         reporter_name=ticket.reporter.full_name,
+        reporter_email=ticket.reporter.email,
         assignee_id=ticket.assignee_id,
         assignee_name=ticket.assignee.full_name if ticket.assignee else None,
         escalation_status=ticket.escalation_status,
+        requested_priority=ticket.requested_priority,
+        escalation_reason=ticket.escalation_reason,
         blocked_reason=ticket.blocked_reason,
         resolution_summary=ticket.resolution_summary,
         created_at=ticket.created_at,
+        due_at=due_at(ticket),
         assigned_at=ticket.assigned_at,
         resolved_at=ticket.resolved_at,
         updated_at=ticket.updated_at,
@@ -106,6 +130,8 @@ def list_tickets(
     category_id: int | None = None,
     building_id: int | None = None,
     floor_id: int | None = None,
+    assigned_to: str | None = None,  # an engineer's id, or "none" for unassigned
+    escalation: Literal["pending", "approved", "rejected"] | None = None,
     date_from: date | None = Query(None, alias="from"),
     date_to: date | None = Query(None, alias="to"),
     sort: Literal["newest", "oldest", "priority"] = "newest",
@@ -133,6 +159,12 @@ def list_tickets(
         query = query.where(Ticket.building_id == building_id)
     if floor_id:
         query = query.where(Ticket.floor_id == floor_id)
+    if assigned_to == "none":
+        query = query.where(Ticket.assignee_id.is_(None))
+    elif assigned_to and assigned_to.isdigit():
+        query = query.where(Ticket.assignee_id == int(assigned_to))
+    if escalation:
+        query = query.where(Ticket.escalation_status == escalation)
     if date_from:
         query = query.where(Ticket.created_at >= date_from)
     if date_to:
@@ -154,6 +186,9 @@ def create_ticket(body: TicketIn, user: User = Depends(get_current_user), db: Se
     seat_id = check_location(db, body)
     ticket = Ticket(**body.model_dump(exclude={"seat_code"}), seat_id=seat_id, reporter_id=user.id, status="open")
     db.add(ticket)
+    db.flush()
+    # Hand it (and anything else waiting) to an engineer straight away, if one can take it.
+    assign_waiting_tickets(db)
     db.commit()
     db.refresh(ticket)
     return ticket_out(ticket)
@@ -165,14 +200,9 @@ def get_ticket(ticket_id: int, user: User = Depends(get_current_user), db: Sessi
 
 
 @router.put("/{ticket_id}", response_model=TicketOut)
-def edit_ticket(ticket_id: int, body: TicketAdminEdit, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    ticket = get_visible_ticket(db, user, ticket_id)
-    is_admin = user.role == "admin"
-    reporter_can_edit = ticket.reporter_id == user.id and ticket.status == "open"
-    if not is_admin and not reporter_can_edit:
-        raise AppError(403, "forbidden", "You can only edit your own tickets while they are Open")
-    if body.priority is not None and body.priority != ticket.priority and not is_admin:
-        raise AppError(403, "forbidden", "Only Facility Admins can change the priority here")
+def edit_ticket(ticket_id: int, body: TicketAdminEdit, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    """Only admins edit a ticket after it's submitted. Reporters can add notes or request a higher priority."""
+    ticket = get_visible_ticket(db, admin, ticket_id)
     ticket.seat_id = check_location(db, body)
     # Leaving priority out (None) keeps the ticket's current priority.
     for field, value in body.model_dump(exclude={"seat_code"}, exclude_none=True).items():
@@ -188,3 +218,199 @@ def delete_ticket(ticket_id: int, admin: User = Depends(require_admin), db: Sess
     db.delete(ticket)  # its notes go too
     db.commit()
     return {"message": f"{ticket_number(ticket_id)} deleted"}
+
+
+@router.put("/{ticket_id}/assignee", response_model=TicketOut)
+def assign_ticket(ticket_id: int, body: AssignIn, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    """
+    An admin assigns an engineer by hand (they may go over the automatic cap), or unassigns
+    with null. Assigning moves an Open ticket to Assigned; unassigning an unfinished one moves
+    it back to Open, where it waits for the admin (it isn't handed out again automatically).
+    """
+    ticket = get_visible_ticket(db, admin, ticket_id)
+    if body.assignee_id is None:
+        ticket.assignee_id = None
+        ticket.assigned_at = None
+        if ticket.status in ("assigned", "in_progress", "blocked"):
+            ticket.status = "open"
+        db.flush()
+        assign_waiting_tickets(db, skip_ticket_id=ticket.id)  # the engineer now has room for another
+    elif body.assignee_id != ticket.assignee_id:
+        engineer = db.get(User, body.assignee_id)
+        if engineer is None or engineer.role != "engineer" or not engineer.is_active:
+            raise AppError(400, "validation_error", "Please check the highlighted fields",
+                           {"assignee_id": "Pick an active engineer"})
+        assign(ticket, engineer)
+    db.commit()
+    db.refresh(ticket)
+    return ticket_out(ticket)
+
+
+# ---------- Status workflow ----------
+
+def is_assigned_engineer(user, ticket):
+    return user.role == "engineer" and ticket.assignee_id == user.id
+
+
+@router.put("/{ticket_id}/status", response_model=TicketOut)
+def change_status(ticket_id: int, body: StatusIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    ticket = get_visible_ticket(db, user, ticket_id)
+    new = body.status
+    if user.role != "admin":
+        if not is_assigned_engineer(user, ticket):
+            raise AppError(403, "forbidden", "Only the assigned engineer or a Facility Admin can change the status")
+        if new not in ENGINEER_MOVES[ticket.status]:
+            raise AppError(400, "not_allowed", "That isn't the next step in the workflow")
+    if new == ticket.status:
+        raise AppError(400, "not_allowed", "The ticket already has that status")
+    if new in ("open", "assigned"):
+        raise AppError(400, "not_allowed", "Assign or unassign an engineer to change that")
+
+    # What each status needs before a ticket can move to it.
+    if new in ("in_progress", "blocked") and ticket.assignee_id is None:
+        raise AppError(400, "not_allowed", "Assign an engineer first")
+    if new == "blocked":
+        if not (body.blocked_reason or "").strip():
+            raise AppError(400, "validation_error", "Please check the highlighted fields",
+                           {"blocked_reason": "Please say what is blocking it"})
+        ticket.blocked_reason = body.blocked_reason.strip()
+    if new == "resolved":
+        if not (body.resolution_summary or "").strip():
+            raise AppError(400, "validation_error", "Please check the highlighted fields",
+                           {"resolution_summary": "Please say what was done"})
+        ticket.resolution_summary = body.resolution_summary.strip()
+        ticket.resolved_at = datetime.now(timezone.utc)
+    if new in ("in_progress", "blocked"):
+        ticket.resolved_at = None  # reopened, so it isn't resolved any more
+
+    ticket.status = new
+    db.flush()
+    if new in ("resolved", "closed"):
+        assign_waiting_tickets(db)  # the engineer has room for another ticket
+    db.commit()
+    db.refresh(ticket)
+    return ticket_out(ticket)
+
+
+# ---------- Priority and escalation ----------
+
+def allowed_priorities(user, ticket):
+    """
+    The levels this user may set on this ticket. The reporter picks Low or Medium when
+    submitting; after that they can only request a higher priority (an escalation).
+    """
+    if user.role == "admin" or is_assigned_engineer(user, ticket):
+        return ["low", "medium", "high", "critical"]
+    return []
+
+
+@router.put("/{ticket_id}/priority", response_model=TicketOut)
+def change_priority(ticket_id: int, body: PriorityIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    ticket = get_visible_ticket(db, user, ticket_id)
+    allowed = allowed_priorities(user, ticket)
+    if body.priority not in allowed:
+        raise AppError(403, "forbidden", "You can't change this ticket's priority. Request a higher priority instead.")
+    ticket.priority = body.priority
+    db.commit()
+    db.refresh(ticket)
+    return ticket_out(ticket)
+
+
+@router.post("/{ticket_id}/escalation", response_model=TicketOut)
+def request_escalation(ticket_id: int, body: EscalationRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    ticket = get_visible_ticket(db, user, ticket_id)
+    if ticket.reporter_id != user.id:
+        raise AppError(403, "forbidden", "Only the person who reported the ticket can request an escalation")
+    if ticket.escalation_status == "pending":
+        raise AppError(409, "already_pending", "There is already a request waiting for an admin")
+    if PRIORITY_RANK[body.requested_priority] <= PRIORITY_RANK[ticket.priority]:
+        raise AppError(400, "validation_error", "Please check the highlighted fields",
+                       {"requested_priority": "Pick a higher priority than the current one"})
+    ticket.escalation_status = "pending"
+    ticket.requested_priority = body.requested_priority
+    ticket.escalation_reason = body.reason
+    db.commit()
+    db.refresh(ticket)
+    return ticket_out(ticket)
+
+
+@router.put("/{ticket_id}/escalation", response_model=TicketOut)
+def review_escalation(ticket_id: int, body: EscalationDecision, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    ticket = get_visible_ticket(db, admin, ticket_id)
+    if ticket.escalation_status != "pending":
+        raise AppError(409, "not_pending", "There is no request waiting on this ticket")
+    if body.decision == "approve":
+        ticket.escalation_status = "approved"
+        ticket.priority = ticket.requested_priority
+    else:
+        ticket.escalation_status = "rejected"
+    db.commit()
+    db.refresh(ticket)
+    return ticket_out(ticket)
+
+
+# ---------- Seen (for the "new" markers on the employee dashboard) ----------
+
+@router.post("/{ticket_id}/seen")
+def mark_seen(ticket_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Remember that this user has just looked at the ticket."""
+    ticket = get_visible_ticket(db, user, ticket_id)
+    view = db.get(TicketView, (user.id, ticket.id)) or TicketView(user_id=user.id, ticket_id=ticket.id)
+    view.seen_at = datetime.now(timezone.utc)
+    db.add(view)
+    db.commit()
+    return {"message": "Seen"}
+
+
+# ---------- Notes ----------
+
+def note_out(note):
+    return NoteOut(id=note.id, ticket_id=note.ticket_id, author_id=note.author_id,
+                   author_name=note.author.full_name, author_role=note.author.role,
+                   body=note.body, created_at=note.created_at, updated_at=note.updated_at)
+
+
+@router.get("/{ticket_id}/notes", response_model=list[NoteOut])
+def list_notes(ticket_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    ticket = get_visible_ticket(db, user, ticket_id)
+    return [note_out(n) for n in ticket.notes]  # oldest first (see Ticket.notes)
+
+
+@router.post("/{ticket_id}/notes", response_model=NoteOut)
+def add_note(ticket_id: int, body: NoteIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    ticket = get_visible_ticket(db, user, ticket_id)
+    # Anyone who can see it may add notes (reporter, assigned engineer, admin);
+    # once Closed, only admins can.
+    if ticket.status == "closed" and user.role != "admin":
+        raise AppError(400, "not_allowed", "This ticket is closed, so notes can't be added")
+    note = TicketNote(ticket_id=ticket.id, author_id=user.id, body=body.body)
+    db.add(note)
+    db.commit()
+    db.refresh(note)
+    return note_out(note)
+
+
+def get_own_note(db, user, note_id, admin_allowed):
+    note = db.get(TicketNote, note_id)
+    if note is None:
+        raise AppError(400, "not_found", "Note not found")
+    if note.author_id != user.id and not (admin_allowed and user.role == "admin"):
+        raise AppError(403, "forbidden", "You can only change your own notes")
+    return note
+
+
+@router.put("/notes/{note_id}", response_model=NoteOut)
+def edit_note(note_id: int, body: NoteIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    note = get_own_note(db, user, note_id, admin_allowed=False)
+    note.body = body.body
+    db.commit()
+    db.refresh(note)
+    return note_out(note)
+
+
+@router.delete("/notes/{note_id}")
+def delete_note(note_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    note = get_own_note(db, user, note_id, admin_allowed=True)
+    db.delete(note)
+    db.commit()
+    return {"message": "Note deleted"}

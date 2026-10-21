@@ -1,5 +1,6 @@
-// One ticket: its details, and the actions you're allowed (edit, delete).
-// The workflow diagram, status, assigning and priority come in step 6; notes in step 7.
+// One ticket (for engineers and admins): its details with the reporter's contact, the
+// status card (status, priority, escalation), and the notes.
+// Each part only shows the actions you're allowed; the API checks the same rules.
 
 import { useEffect, useState } from 'react'
 import { Link as RouterLink, useNavigate, useParams } from 'react-router-dom'
@@ -8,11 +9,14 @@ import {
   Link, Paper, Snackbar, Stack, Typography,
 } from '@mui/material'
 import Layout from '../components/Layout'
+import AssignDialog from '../components/AssignDialog'
 import TicketDialog from '../components/TicketDialog'
+import TicketNotes from '../components/TicketNotes'
+import TicketWorkflow from '../components/TicketWorkflow'
 import { PriorityChip, StatusChip } from '../components/TicketChips'
 import { api } from '../services/api'
 import { useAuth } from '../services/AuthContext'
-import { formatDateTime, formatLocation } from '../ticketLabels'
+import { dueLabel, formatDateTime, formatLocation } from '../ticketLabels'
 
 function Detail({ label, children }) {
   return (
@@ -31,11 +35,19 @@ export default function TicketDetailPage() {
   const [error, setError] = useState('')
   const [editing, setEditing] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [assigning, setAssigning] = useState(false)
   const [message, setMessage] = useState('')
 
   useEffect(() => {
     api('tickets', `/${id}`).then(setTicket).catch((err) => setError(err.message))
+    // Opening the ticket counts as having looked at it (clears its New marker on the dashboard).
+    api('tickets', `/${id}/seen`, { method: 'POST' }).catch(() => {})
   }, [id])
+
+  // Your own changes aren't news to you either.
+  function markSeen() {
+    api('tickets', `/${id}/seen`, { method: 'POST' }).catch(() => {})
+  }
 
   async function confirmDelete() {
     setDeleting(false)
@@ -47,7 +59,10 @@ export default function TicketDetailPage() {
     }
   }
 
-  const back = <Link component={RouterLink} to="/tickets">← Back to tickets</Link>
+  // Only admins have the Tickets page; engineers work from their dashboard.
+  const back = user.role === 'admin'
+    ? <Link component={RouterLink} to="/tickets">← Back to tickets</Link>
+    : <Link component={RouterLink} to="/">← Back to dashboard</Link>
 
   if (!ticket) {
     return (
@@ -58,9 +73,9 @@ export default function TicketDetailPage() {
     )
   }
 
-  // Same rules as the API: the reporter while it's Open, or an admin.
+  // Same rule as the API: only admins edit a ticket after it's submitted.
   const isAdmin = user.role === 'admin'
-  const canEdit = isAdmin || (ticket.reporter_id === user.id && ticket.status === 'open')
+  const canEdit = isAdmin
 
   return (
     <Layout>
@@ -79,6 +94,7 @@ export default function TicketDetailPage() {
           </Box>
           <Stack direction="row" spacing={1}>
             {canEdit && <Button variant="outlined" onClick={() => setEditing(true)}>Edit</Button>}
+            {isAdmin && <Button variant="outlined" onClick={() => setAssigning(true)}>Assign</Button>}
             {isAdmin && <Button variant="outlined" color="error" onClick={() => setDeleting(true)}>Delete</Button>}
           </Stack>
         </Box>
@@ -88,16 +104,42 @@ export default function TicketDetailPage() {
         <Box sx={{ mt: 3, display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: '1fr 1fr 1fr' } }}>
           <Detail label="Category">{ticket.category_name}</Detail>
           <Detail label="Location">{formatLocation(ticket)}</Detail>
-          <Detail label="Reported by">{ticket.reporter_name}</Detail>
-          <Detail label="Assigned to">{ticket.assignee_name || 'Not assigned yet'}</Detail>
+          <Detail label="Contact">{ticket.reporter_name} · {ticket.reporter_email}</Detail>
+          <Detail label="Assigned to">
+            {ticket.assignee_name ? `${ticket.assignee_name} (since ${formatDateTime(ticket.assigned_at)})` : 'Not assigned yet'}
+          </Detail>
           <Detail label="Reported">{formatDateTime(ticket.created_at)}</Detail>
+          <Detail label="Due">
+            {formatDateTime(ticket.due_at)}{' '}
+            <Typography component="span" variant="body2" color={dueLabel(ticket).late ? 'error.main' : 'text.secondary'}>
+              ({dueLabel(ticket).text})
+            </Typography>
+          </Detail>
           <Detail label="Last updated">{formatDateTime(ticket.updated_at)}</Detail>
+          {ticket.blocked_reason && (
+            <Detail label={ticket.status === 'blocked' ? 'Blocked because' : 'Was blocked because'}>{ticket.blocked_reason}</Detail>
+          )}
+          {ticket.resolution_summary && <Detail label="Resolution">{ticket.resolution_summary}</Detail>}
+          {ticket.resolved_at && <Detail label="Resolved">{formatDateTime(ticket.resolved_at)}</Detail>}
         </Box>
       </Paper>
+
+      <TicketWorkflow ticket={ticket} user={user}
+        onChanged={(saved, changeMessage) => { setTicket(saved); setMessage(changeMessage); markSeen() }} />
+      <TicketNotes ticket={ticket} user={user} />
 
       {editing && (
         <TicketDialog ticket={ticket} onClose={() => setEditing(false)}
           onSaved={(saved) => { setEditing(false); setTicket(saved); setMessage(`${saved.number} saved`) }} />
+      )}
+
+      {assigning && (
+        <AssignDialog ticket={ticket} onClose={() => setAssigning(false)}
+          onSaved={(saved) => {
+            setAssigning(false)
+            setTicket(saved)
+            setMessage(saved.assignee_name ? `Assigned to ${saved.assignee_name}` : `${saved.number} unassigned`)
+          }} />
       )}
 
       {deleting && (

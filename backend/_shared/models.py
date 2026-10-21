@@ -1,12 +1,12 @@
 """
-The 8 database tables as SQLAlchemy classes.
+The 9 database tables as SQLAlchemy classes.
 
 Allowed values are CheckConstraints, so the database itself refuses bad data.
 Rules that depend on other rows (floor belongs to the building, the status workflow,
 who may do what) are checked in the routers instead.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy import BigInteger, CheckConstraint, DateTime, ForeignKey, Integer, Text, UniqueConstraint, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -28,6 +28,20 @@ def updated_at_column():
 def ticket_number(ticket_id):
     """Tickets are shown to people as TKT- + (1000 + id), e.g. id 1 is TKT-1001."""
     return f"TKT-{1000 + ticket_id}"
+
+
+# The ticket statuses, in workflow order. Open = waiting for an engineer; Assigned = an
+# engineer has it but hasn't started. "Unfinished" is everything before Resolved.
+STATUSES = ["open", "assigned", "in_progress", "blocked", "resolved", "closed"]
+UNFINISHED = ("open", "assigned", "in_progress", "blocked")
+
+
+# Every ticket is due 3 days after it's submitted. Nobody can change it, so it isn't stored.
+DUE_DAYS = 3
+
+
+def due_at(ticket):
+    return ticket.created_at + timedelta(days=DUE_DAYS)
 
 
 class User(Base):
@@ -133,7 +147,7 @@ class Ticket(Base):
 
     __tablename__ = "tickets"
     __table_args__ = (
-        CheckConstraint("status IN ('open', 'in_progress', 'blocked', 'resolved', 'closed')", name="tickets_status_allowed"),
+        CheckConstraint("status IN ('open', 'assigned', 'in_progress', 'blocked', 'resolved', 'closed')", name="tickets_status_allowed"),
         CheckConstraint("priority IN ('low', 'medium', 'high', 'critical')", name="tickets_priority_allowed"),
         CheckConstraint("escalation_status IN ('none', 'pending', 'approved', 'rejected')", name="tickets_escalation_status_allowed"),
         CheckConstraint("requested_priority IN ('high', 'critical')", name="tickets_requested_priority_allowed"),
@@ -183,3 +197,16 @@ class TicketNote(Base):
 
     ticket: Mapped[Ticket] = relationship(back_populates="notes")
     author: Mapped[User] = relationship()
+
+
+class TicketView(Base):
+    """
+    When someone last looked at a ticket. The employee dashboard uses it to mark tickets
+    with a new note or a change since then. Deleting a ticket or user deletes these rows.
+    """
+
+    __tablename__ = "ticket_views"
+
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    ticket_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tickets.id", ondelete="CASCADE"), primary_key=True)
+    seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
