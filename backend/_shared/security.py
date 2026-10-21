@@ -70,3 +70,10 @@ def get_current_user(
     if user is None or not user.is_active:
         raise AppError(401, "not_signed_in", "Please log in")
     return user
+
+
+def require_admin(user: User = Depends(get_current_user)) -> User:
+    """FastAPI dependency for admin-only endpoints: add `admin: User = Depends(require_admin)`."""
+    if user.role != "admin":
+        raise AppError(403, "forbidden", "Only Facility Admins can do this")
+    return user

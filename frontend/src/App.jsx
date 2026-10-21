@@ -6,9 +6,11 @@ import { useAuth } from './services/AuthContext'
 import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
 import HomePage from './pages/HomePage'
+import FacilitiesPage from './pages/FacilitiesPage'
 
 // Shows the page only when someone is logged in; otherwise sends them to /login.
-function RequireAuth({ children }) {
+// With `roles`, only those roles get in; everyone else goes back to the home page.
+function RequireAuth({ roles, children }) {
   const { user, loading } = useAuth()
   if (loading) {
     return (
@@ -17,7 +19,9 @@ function RequireAuth({ children }) {
       </Box>
     )
   }
-  return user ? children : <Navigate to="/login" replace />
+  if (!user) return <Navigate to="/login" replace />
+  if (roles && !roles.includes(user.role)) return <Navigate to="/" replace />
+  return children
 }
 
 export default function App() {
@@ -26,6 +30,7 @@ export default function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/" element={<RequireAuth><HomePage /></RequireAuth>} />
+      <Route path="/facilities" element={<RequireAuth roles={['admin']}><FacilitiesPage /></RequireAuth>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
