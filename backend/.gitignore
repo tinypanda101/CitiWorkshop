@@ -1,0 +1,10 @@
+# bin/start-dev.sh installs each service's libraries into its own folder (pip --target).
+# Keep only our own files from a service folder in git; ignore everything it installs.
+/*/*
+!/*/function.py
+!/*/router.py
+!/*/schemas.py
+!/*/requirements.txt
+
+# Folders starting with _ (shared code, workshop examples) are kept as they are.
+!/_*/*
