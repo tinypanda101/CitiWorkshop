@@ -51,9 +51,15 @@ class TicketAdminEdit(TicketEdit):
 
 
 class TicketIn(TicketEdit):
-    """A new ticket. Employees can only pick Low or Medium; higher needs an escalation."""
+    """
+    A new ticket. Admins and engineers can pick any priority. Employees can only pick Low or
+    Medium (checked in the router), and can ask for High or Critical straight away by sending
+    `requested_priority` with a reason: the ticket starts at Medium with that request pending.
+    """
 
-    priority: Literal["low", "medium"] = "low"
+    priority: Literal["low", "medium", "high", "critical"] = "low"
+    requested_priority: Literal["high", "critical"] | None = None
+    escalation_reason: str | None = None
 
 
 class AssignIn(BaseModel):
@@ -141,3 +147,10 @@ class TicketOut(BaseModel):
     assigned_at: datetime | None
     resolved_at: datetime | None
     updated_at: datetime
+
+
+class TicketPage(BaseModel):
+    """One page of the ticket list, and how many tickets match altogether."""
+
+    tickets: list[TicketOut]
+    total: int

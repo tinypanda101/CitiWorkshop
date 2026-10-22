@@ -5,9 +5,9 @@ import { AppBar, Box, Paper, Toolbar, Typography } from '@mui/material'
 export default function AuthCard({ title, children }) {
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
-      <AppBar position="static" color="secondary" elevation={0}>
+      <AppBar position="static" color="secondary" elevation={0} enableColorOnDark>
         <Toolbar>
-          <Typography variant="h6" component="span">ACME Facility Desk</Typography>
+          <Typography variant="h6" component="span">ACME Ticketing</Typography>
         </Toolbar>
       </AppBar>
       <Box sx={{ display: 'flex', justifyContent: 'center', px: 2, py: 6 }}>

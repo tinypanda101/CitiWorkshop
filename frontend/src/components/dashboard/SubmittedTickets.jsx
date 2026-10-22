@@ -25,7 +25,7 @@ export default function SubmittedTickets({ data, user, onSubmitted }) {
     <Box sx={{ display: 'grid', gap: 2 }}>
       <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)' } }}>
         {Object.entries(EMPLOYEE_STAGES).map(([stage, s]) => (
-          <CountTile key={stage} count={counts[stage]} name={s.name} meaning={s.meaning} edge={STAGE_EDGES[stage]} />
+          <CountTile key={stage} count={counts[stage]} name={s.name} edge={STAGE_EDGES[stage]} />
         ))}
       </Box>
 

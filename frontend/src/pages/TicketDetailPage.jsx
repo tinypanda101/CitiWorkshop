@@ -109,7 +109,7 @@ export default function TicketDetailPage() {
             {ticket.assignee_name ? `${ticket.assignee_name} (since ${formatDateTime(ticket.assigned_at)})` : 'Not assigned yet'}
           </Detail>
           <Detail label="Reported">{formatDateTime(ticket.created_at)}</Detail>
-          <Detail label="Due">
+          <Detail label="Deadline">
             {formatDateTime(ticket.due_at)}{' '}
             <Typography component="span" variant="body2" color={dueLabel(ticket).late ? 'error.main' : 'text.secondary'}>
               ({dueLabel(ticket).text})

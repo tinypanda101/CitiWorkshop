@@ -22,11 +22,12 @@ CATEGORIES = [
 # The first Facility Admin. Only the bcrypt hash of the starting password is stored here;
 # log in with the starting password once and change it straight away.
 FIRST_ADMIN_EMAIL = "admin@acme.inc"
-FIRST_ADMIN_PASSWORD_HASH = "$2b$12$6ONYelqjnZmIxUUUsHpr5uOZWeh8UWIRVkS8JdN/shl3FCGv6WACa"  # nosec B105 - a hash, not a password
+# A bcrypt hash, not the password itself (Bandit would otherwise flag it as one).
+FIRST_ADMIN_PASSWORD_HASH = "$2b$12$6ONYelqjnZmIxUUUsHpr5uOZWeh8UWIRVkS8JdN/shl3FCGv6WACa"  # nosec B105
 
 
 def create_tables():
-    """Creates any of the 8 tables that don't exist yet. Existing tables are left alone."""
+    """Creates any of the tables that don't exist yet. Existing tables are left alone."""
     Base.metadata.create_all(engine)
 
 

@@ -1,15 +1,17 @@
-// Add or edit an account (pass `account` to edit). Specialty and phone only show when
-// the role is Engineer. `onSaved` runs after the API accepts it.
+// Add or edit an account (pass `account` to edit). Sub-specialty and phone only show when
+// the role is Engineer. The sub-specialty is a ticket category: auto-assign gives them those tickets. `onSaved` runs after the API accepts it.
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
-  Alert, Button, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, MenuItem,
+  Alert, Button, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, ListSubheader, MenuItem,
   Stack, Switch, TextField,
 } from '@mui/material'
+import PasswordField from './PasswordField'
+import PhoneField from './PhoneField'
 import { api } from '../services/api'
 import { ROLE_NAMES, SPECIALTY_NAMES } from '../roles'
 
-const EMPTY = { email: '', full_name: '', password: '', role: 'employee', is_active: true, specialty: '', phone: '' }
+const EMPTY = { email: '', full_name: '', password: '', role: 'employee', is_active: true, category_id: '', phone: '' }
 
 export default function UserDialog({ account, onSaved, onClose }) {
   const isNew = !account
@@ -19,6 +21,11 @@ export default function UserDialog({ account, onSaved, onClose }) {
   const [fieldErrors, setFieldErrors] = useState({})
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [categories, setCategories] = useState([])
+
+  useEffect(() => {
+    api('facilities', '/categories').then(setCategories).catch((err) => setError(err.message))
+  }, [])
 
   const isEngineer = values.role === 'engineer'
   // Warn before an engineer stops being one: their unfinished tickets lose their engineer.
@@ -33,7 +40,7 @@ export default function UserDialog({ account, onSaved, onClose }) {
     setSaving(true)
     setError('')
     setFieldErrors({})
-    const body = { ...values, specialty: isEngineer ? values.specialty || null : null }
+    const body = { ...values, category_id: isEngineer ? values.category_id || null : null }
     if (!isEngineer) body.phone = null
     if (!isNew) { delete body.email; delete body.password }
     try {
@@ -65,17 +72,22 @@ export default function UserDialog({ account, onSaved, onClose }) {
             {isNew && <TextField label="Email" type="email" required autoFocus {...fieldProps('email', 'Must end in @acme.inc')} />}
             <TextField label="Full name" required autoFocus={!isNew} {...fieldProps('full_name')} />
             {isNew && (
-              <TextField label="Starting password" required {...fieldProps('password', 'At least 8 characters. They can change it on My account.')} />
+              <PasswordField label="Starting password" required {...fieldProps('password', 'At least 8 characters. They can change it on My account.')} />
             )}
             <TextField select label="Role" required {...fieldProps('role')}>
               {Object.entries(ROLE_NAMES).map(([value, name]) => <MenuItem key={value} value={value}>{name}</MenuItem>)}
             </TextField>
             {isEngineer && (
               <>
-                <TextField select label="Specialty" required {...fieldProps('specialty')}>
-                  {Object.entries(SPECIALTY_NAMES).map(([value, name]) => <MenuItem key={value} value={value}>{name}</MenuItem>)}
+                <TextField select label="Sub-specialty" required
+                  {...fieldProps('category_id', 'They are auto-assigned tickets in this category')}>
+                  {Object.entries(SPECIALTY_NAMES).flatMap(([type, name]) => [
+                    <ListSubheader key={type}>{name}</ListSubheader>,
+                    ...categories.filter((c) => c.type === type).map((c) => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>),
+                  ])}
                 </TextField>
-                <TextField label="Phone" {...fieldProps('phone', 'Optional')} />
+                <PhoneField value={values.phone || ''} onChange={(phone) => change('phone', phone)}
+                  error={Boolean(fieldErrors.phone)} helperText={fieldErrors.phone || 'Optional'} />
               </>
             )}
             {!isNew && (
@@ -83,7 +95,10 @@ export default function UserDialog({ account, onSaved, onClose }) {
                 control={<Switch checked={values.is_active} onChange={(e) => change('is_active', e.target.checked)} />} />
             )}
             {losesEngineer && (
-              <Alert severity="warning">Their unfinished tickets will be unassigned, so you can give them to another engineer.</Alert>
+              <Alert severity="warning">
+                Their unfinished tickets go back to Open, to be handed to another engineer.
+                {isEngineer && ' Their sub-specialty and phone are kept for when they are reactivated.'}
+              </Alert>
             )}
           </Stack>
         </DialogContent>

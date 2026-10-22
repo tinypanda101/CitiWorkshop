@@ -20,17 +20,8 @@ export function Section({ title, note, action, children, sx }) {
   )
 }
 
-// Two sections side by side on wide screens, stacked on narrow ones.
-export function Pair({ children }) {
-  return (
-    <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, alignItems: 'start' }}>
-      {children}
-    </Box>
-  )
-}
-
 // A count with a coloured top edge, e.g. "3 / In Progress / An engineer is working on it".
-// With `to`, the tile is a link to that page.
+// `meaning` is optional. With `to`, the tile is a link to that page.
 export function CountTile({ count, name, meaning, edge, to }) {
   const link = to ? { component: RouterLink, to } : {}
   return (
@@ -40,13 +31,13 @@ export function CountTile({ count, name, meaning, edge, to }) {
     }}>
       <Typography variant="h3" component="p" sx={{ fontWeight: 400, fontVariantNumeric: 'tabular-nums' }}>{count}</Typography>
       <Typography variant="subtitle1" sx={{ fontWeight: 500 }}>{name}</Typography>
-      <Typography variant="body2" color="text.secondary">{meaning}</Typography>
+      {meaning && <Typography variant="body2" color="text.secondary">{meaning}</Typography>}
     </Paper>
   )
 }
 
 // A button-like link to another page, e.g. "4 / Overdue / Past the 3-day deadline  ›".
-// `count` is optional.
+// `count` and `meaning` are optional.
 export function LinkTile({ to, count, name, meaning, edge = 'divider' }) {
   return (
     <Paper variant="outlined" component={RouterLink} to={to} sx={{
@@ -58,7 +49,7 @@ export function LinkTile({ to, count, name, meaning, edge = 'divider' }) {
       )}
       <Box sx={{ flexGrow: 1 }}>
         <Typography sx={{ fontWeight: 500 }}>{name}</Typography>
-        <Typography variant="body2" color="text.secondary">{meaning}</Typography>
+        {meaning && <Typography variant="body2" color="text.secondary">{meaning}</Typography>}
       </Box>
       <Typography color="primary" sx={{ fontSize: 22 }} aria-hidden>›</Typography>
     </Paper>

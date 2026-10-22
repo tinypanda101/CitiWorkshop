@@ -1,14 +1,18 @@
-// The Facility Admin dashboard: status tiles for the chosen date range, what needs attention
-// right now, the unfinished workload, and response times. The detail (each attention list,
-// engineers, locations, categories) is on its own report page, behind a button.
+// The Facility Admin dashboard, in two tabs. Overview: status tiles for the chosen date range,
+// what needs attention right now, the unfinished workload, and response times. The detail
+// (each attention list, engineers, locations, categories) is on its own report page, behind a
+// button. Submitted Tickets: the tickets the admin submitted themselves (the employee dashboard).
 
 import { useEffect, useState } from 'react'
-import { Alert, Box, Typography } from '@mui/material'
+import { Alert, Box, Tab, Tabs, Typography } from '@mui/material'
 import BarList from './BarList'
 import DateRangePicker from './DateRangePicker'
-import { CountTile, LinkTile, Pair, Section, StatTile } from './DashboardParts'
+import SubmittedTickets from './SubmittedTickets'
+import { CountTile, LinkTile, Section, StatTile } from './DashboardParts'
+import WorkloadTile from './WorkloadTile'
 import { describeRange, formatHours, plural, presetRange } from './dashboardFormat'
 import { api } from '../../services/api'
+import { SPECIALTY_NAMES } from '../../roles'
 
 const TILES = [
   { status: 'open', name: 'Open', meaning: 'Waiting for an engineer', edge: 'grey.500' },
@@ -21,14 +25,16 @@ const TILES = [
 
 const REPORTS = [
   { kind: 'engineers', name: 'Engineers', meaning: 'Availability, workload and on-time % per engineer' },
-  { kind: 'locations', name: 'Locations', meaning: 'Buildings, floors and seats with the most tickets' },
+  { kind: 'locations', name: 'Locations', meaning: 'Tickets per building' },
   { kind: 'categories', name: 'Categories', meaning: 'The most common facility and technology issues' },
 ]
 
-export default function AdminDashboard({ reloads }) {
+export default function AdminDashboard({ user }) {
+  const [tab, setTab] = useState('overview')
   const [range, setRange] = useState(() => presetRange('30'))
   const [data, setData] = useState(null)
   const [error, setError] = useState('')
+  const [reloads, setReloads] = useState(0) // goes up after submitting a ticket
 
   // e.g. "from=2026-09-22&to=2026-10-21": sent to the API, and passed on to the pages the tiles open.
   const params = new URLSearchParams()
@@ -40,30 +46,38 @@ export default function AdminDashboard({ reloads }) {
     api('dashboard', `/?${query}`).then(setData).catch((err) => setError(err.message))
   }, [query, reloads])
 
+  const tabs = (
+    <Tabs value={tab} onChange={(e, value) => setTab(value)} sx={{ borderBottom: 1, borderColor: 'divider' }}>
+      <Tab value="overview" label="Overview" />
+      <Tab value="submitted" label="Submitted Tickets" />
+    </Tabs>
+  )
+
   if (!data) {
     return (
       <Box sx={{ display: 'grid', gap: 2 }}>
-        <DateRangePicker value={range} onChange={setRange} />
+        {tabs}
+        {tab === 'overview' && <DateRangePicker value={range} onChange={setRange} />}
         {error ? <Alert severity="error">{error}</Alert> : <Typography color="text.secondary">Loading…</Typography>}
       </Box>
     )
   }
 
-  const pendingEscalations = data.escalations.filter((t) => t.escalation_status === 'pending').length
+  if (tab === 'submitted') {
+    return (
+      <Box sx={{ display: 'grid', gap: 2 }}>
+        {tabs}
+        <SubmittedTickets data={data.submitted} user={user} onSubmitted={() => setReloads(reloads + 1)} />
+      </Box>
+    )
+  }
+
   const ticketsLink = (status) => `/tickets?${new URLSearchParams({ ...(status && { status }), ...Object.fromEntries(params) })}`
   const reportLink = (kind) => `/reports/${kind}?${query}`
 
-  // One bar per engineer out of the cap, plus the tickets still waiting for one.
-  const workload = [
-    ...data.engineers.map((e) => ({
-      label: e.full_name, value: e.open_tickets,
-      text: `${e.open_tickets} / ${data.ticket_cap}${e.open_tickets >= data.ticket_cap ? ' Full' : ''}`,
-    })),
-    { label: 'Not assigned', value: data.waiting.length },
-  ]
-
   return (
     <Box sx={{ display: 'grid', gap: 2 }}>
+      {tabs}
       <DateRangePicker value={range} onChange={setRange} />
       {error && <Alert severity="error" onClose={() => setError('')}>{error}</Alert>}
 
@@ -80,32 +94,42 @@ export default function AdminDashboard({ reloads }) {
         </Box>
       </div>
 
-      <Section title="Needs attention" note="Right now, whatever the date range. Click one for the list.">
+      <Section title="Needs attention">
         <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', lg: 'repeat(4, 1fr)' } }}>
-          <LinkTile to={reportLink('overdue')} count={data.overdue.length} name="Overdue" meaning="Past the 3-day deadline" edge="error.main" />
-          <LinkTile to={reportLink('escalations')} count={pendingEscalations} name="Escalations" meaning="Waiting for your review" edge="warning.main" />
-          <LinkTile to={reportLink('blocked')} count={data.blocked.length} name="Blocked" meaning="On hold, with the reason" edge="error.main" />
-          <LinkTile to={reportLink('waiting')} count={data.waiting.length} name="Waiting for an engineer"
-            meaning="Everyone matching is full or Off duty" edge="grey.500" />
+          <LinkTile to={reportLink('overdue')} count={data.overdue.total} name="Overdue" edge="error.main" />
+          <LinkTile to={reportLink('escalations')} count={data.pending_escalations.total} name="Escalations" edge="warning.main" />
+          <LinkTile to={reportLink('blocked')} count={data.blocked.total} name="Blocked" edge="error.main" />
+          <LinkTile to={reportLink('waiting')} count={data.waiting.total} name="Waiting for an engineer" edge="grey.500" />
         </Box>
       </Section>
 
-      <Pair>
-        <Section title="Unfinished by priority" note="Open, Assigned, In Progress and Blocked, right now">
-          <BarList rows={data.by_priority} empty="No unfinished tickets." />
-        </Section>
-        <Section title="Unfinished by engineer" note={`Out of the ${data.ticket_cap}-ticket cap. Auto-assign skips anyone who is full.`}>
-          <BarList rows={workload} max={data.ticket_cap} empty="No unfinished tickets." />
-        </Section>
-      </Pair>
+      <Section title="Unfinished by priority">
+        <BarList rows={data.by_priority} empty="No unfinished tickets." />
+      </Section>
+
+      <Section title="Workload by sub-specialty">
+        <Box sx={{ display: 'grid', gap: 2 }}>
+          {Object.entries(SPECIALTY_NAMES).map(([type, typeName]) => (
+            <div key={type}>
+              <Typography variant="subtitle2" gutterBottom>{typeName}</Typography>
+              <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: 'repeat(5, 1fr)' } }}>
+                {data.workload.filter((w) => w.type === type).map((w) => (
+                  <WorkloadTile key={w.category_name} workload={w}
+                    to={`/reports/engineers?${new URLSearchParams({ category: w.category_name, ...Object.fromEntries(params) })}`} />
+                ))}
+              </Box>
+            </div>
+          ))}
+        </Box>
+      </Section>
 
       <Section title="Response times" note={`Tickets reported ${describeRange(range)}`}>
         <Box sx={{ display: 'grid', gap: 3, gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(4, 1fr)' } }}>
           <StatTile value={data.averages.percent_on_time === null ? '—' : `${data.averages.percent_on_time}%`}
-            label="Resolved on time (within 3 days)" />
+            label="Resolved on time" />
           <StatTile value={formatHours(data.averages.hours_to_resolve)} label="Average time to resolve" />
           <StatTile value={formatHours(data.averages.hours_to_assign)} label="Average time to assign an engineer" />
-          <StatTile value={data.waiting_to_close} label="Resolved, waiting to be closed (right now)" />
+          <StatTile value={data.waiting_to_close} label="Resolved" />
         </Box>
       </Section>
 

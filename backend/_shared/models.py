@@ -2,6 +2,8 @@
 The 9 database tables as SQLAlchemy classes.
 
 Allowed values are CheckConstraints, so the database itself refuses bad data.
+index=True adds a database index, so filtering and counting by that column stays fast
+with thousands of tickets (PostgreSQL doesn't index foreign keys by itself).
 Rules that depend on other rows (floor belongs to the building, the status workflow,
 who may do what) are checked in the routers instead.
 """
@@ -67,30 +69,42 @@ class User(Base):
 
 
 class EngineerProfile(Base):
-    """Extra details for users whose role is engineer."""
+    """
+    Extra details for users whose role is engineer. Their sub-specialty is one ticket
+    category (e.g. Plumbing): auto-assign gives them tickets in that category. Their
+    specialty (facility or technology) is that category's type, so it isn't stored twice.
+    """
 
     __tablename__ = "engineer_profiles"
     __table_args__ = (
-        CheckConstraint("specialty IN ('facility', 'technology')", name="engineer_profiles_specialty_allowed"),
         CheckConstraint("availability IN ('available', 'busy', 'off_duty')", name="engineer_profiles_availability_allowed"),
     )
 
     user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
-    specialty: Mapped[str] = mapped_column(Text)
+    category_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("ticket_categories.id"), index=True)
     availability: Mapped[str] = mapped_column(Text, server_default="available")
     phone: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = created_at_column()
     updated_at: Mapped[datetime] = updated_at_column()
 
     user: Mapped[User] = relationship(back_populates="engineer_profile")
+    category: Mapped["TicketCategory"] = relationship()
+
+    @property
+    def specialty(self):
+        return self.category.type
 
 
 class Building(Base):
     __tablename__ = "buildings"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    code: Mapped[str] = mapped_column(Text, unique=True)  # short, e.g. HQ; starts its seat codes (HQ-201)
     name: Mapped[str] = mapped_column(Text, unique=True)
-    address: Mapped[str | None] = mapped_column(Text)
+    address: Mapped[str] = mapped_column(Text)
+    manager_name: Mapped[str | None] = mapped_column(Text)
+    manager_email: Mapped[str | None] = mapped_column(Text)
+    manager_phone: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = created_at_column()
     updated_at: Mapped[datetime] = updated_at_column()
 
@@ -156,20 +170,20 @@ class Ticket(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     title: Mapped[str] = mapped_column(Text)
     description: Mapped[str] = mapped_column(Text)
-    category_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("ticket_categories.id"))
-    building_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("buildings.id"))
+    category_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("ticket_categories.id"), index=True)
+    building_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("buildings.id"), index=True)
     floor_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("floors.id"))
     seat_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("seats.id"))
-    status: Mapped[str] = mapped_column(Text, server_default="open")
+    status: Mapped[str] = mapped_column(Text, server_default="open", index=True)
     priority: Mapped[str] = mapped_column(Text)
-    reporter_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
-    assignee_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("users.id"))
+    reporter_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"), index=True)
+    assignee_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("users.id"), index=True)
     blocked_reason: Mapped[str | None] = mapped_column(Text)
     resolution_summary: Mapped[str | None] = mapped_column(Text)
-    escalation_status: Mapped[str] = mapped_column(Text, server_default="none")
+    escalation_status: Mapped[str] = mapped_column(Text, server_default="none", index=True)
     requested_priority: Mapped[str | None] = mapped_column(Text)
     escalation_reason: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = created_at_column()
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
     assigned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = updated_at_column()
@@ -189,7 +203,7 @@ class TicketNote(Base):
     __tablename__ = "ticket_notes"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    ticket_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tickets.id", ondelete="CASCADE"))
+    ticket_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tickets.id", ondelete="CASCADE"), index=True)
     author_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
     body: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = created_at_column()

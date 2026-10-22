@@ -3,7 +3,7 @@
 // refresh keeps you signed in until it expires (8 hours).
 
 import { createContext, useContext, useEffect, useState } from 'react'
-import { api, getToken, setToken } from './api'
+import { api, getToken, setToken, warmUp } from './api'
 
 const AuthContext = createContext(null)
 
@@ -13,6 +13,7 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(() => Boolean(getToken()))
 
   useEffect(() => {
+    warmUp() // start the backend services while the first page loads (see api.js)
     if (!getToken()) return
     api('auth', '/me')
       .then(setUser)

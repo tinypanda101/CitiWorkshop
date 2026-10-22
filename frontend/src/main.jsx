@@ -1,8 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { HashRouter } from 'react-router-dom'
-import { CssBaseline, ThemeProvider } from '@mui/material'
-import theme from './theme'
+import { ColorModeProvider } from './services/ColorMode'
 import { AuthProvider } from './services/AuthContext'
 import App from './App.jsx'
 
@@ -10,13 +9,12 @@ import App from './App.jsx'
 // works on CloudFront without extra server rules.
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
+    <ColorModeProvider>
       <HashRouter>
         <AuthProvider>
           <App />
         </AuthProvider>
       </HashRouter>
-    </ThemeProvider>
+    </ColorModeProvider>
   </StrictMode>,
 )

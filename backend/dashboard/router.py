@@ -1,12 +1,16 @@
 """
-The dashboard: one endpoint, GET /, that answers with the view for your role.
+The dashboard: GET / answers with the view for your role, and GET /locations is the admin's
+Locations report (one building, floor or seat level at a time).
 
 - Facility Admin: tickets reported in the chosen date range, plus what needs attention right now
-  (overdue, escalations, blocked, waiting for an engineer) and each engineer's workload.
+  (overdue, escalations, blocked, waiting for an engineer), the workload per sub-specialty, and
+  the tickets they submitted themselves.
 - Engineer: the tickets assigned to them.
 - Employee: the tickets they reported.
 
-The numbers are worked out in Python from the ticket rows, so each one is easy to follow.
+The admin numbers are counted by the database (GROUP BY, COUNT, AVG), so the dashboard stays
+quick with tens of thousands of tickets; only the short lists load actual ticket rows.
+The engineer and employee views only ever load that person's own tickets.
 """
 
 from collections import Counter
@@ -14,20 +18,37 @@ from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
-from _shared.assignment import MAX_OPEN_TICKETS
+from _shared.assignment import MAX_OPEN_TICKETS, PRIORITY_ORDER
 from _shared.database import get_db
-from _shared.models import STATUSES, UNFINISHED, Ticket, TicketView, User, due_at, ticket_number
-from _shared.security import get_current_user
+from _shared.models import (
+    DUE_DAYS, STATUSES, UNFINISHED, Building, EngineerProfile, Floor, Seat, Ticket, TicketCategory, TicketView, User,
+    due_at, ticket_number,
+)
+from _shared.errors import AppError
+from _shared.security import get_current_user, require_admin
 from schemas import (
-    AdminDashboard, Averages, Bar, EmployeeDashboard, EngineerDashboard, EngineerRow, MyTicketRow, TicketRow,
+    AdminDashboard, Averages, Bar, EmployeeDashboard, EngineerDashboard, EngineerRow, LocationReport, LocationRow,
+    MyTicketRow, TicketList, TicketRow, WorkloadRow,
 )
 
 router = APIRouter()
 
+
+@router.get("/ping")
+def ping():
+    """Answers straight away (no login, no database). The app calls it on opening to start this service up."""
+    return {"ok": True}
+
+
 PRIORITIES = ["critical", "high", "medium", "low"]
-TOP = 5  # how many buildings / floors / seats to show
+LIST_SIZE = 50  # the most tickets sent in each Needs attention list (the total is sent too)
+
+# Load what a ticket row shows in a few batched queries, instead of one query per ticket.
+ROW_OPTIONS = [selectinload(Ticket.building), selectinload(Ticket.floor), selectinload(Ticket.seat),
+               selectinload(Ticket.category), selectinload(Ticket.assignee)]
+NEWS_OPTIONS = [*ROW_OPTIONS, selectinload(Ticket.notes)]  # the employee and engineer lists also check notes
 
 
 def location(ticket):
@@ -53,86 +74,140 @@ def count_by_status(tickets):
     return {status: counts[status] for status in STATUSES}
 
 
-def count_by_priority(tickets):
-    counts = Counter(t.priority for t in tickets)
-    return [Bar(label=p.capitalize(), value=counts[p]) for p in PRIORITIES]
+def percent(part, whole):
+    return round(100 * part / whole) if whole else None
 
 
-def top(counter, limit=TOP):
-    return [Bar(label=label, value=value) for label, value in counter.most_common(limit)]
+def hours(seconds):
+    return round(seconds / 3600, 2) if seconds is not None else None
 
 
-def average_hours(durations):
-    durations = [d for d in durations if d is not None]
-    if not durations:
-        return None
-    return round(sum(d.total_seconds() for d in durations) / len(durations) / 3600, 1)
+# ---------- Admin ----------
 
-
-def on_time_percent(tickets):
-    """Of the tickets that have been resolved, how many were resolved by their deadline."""
-    resolved = [t for t in tickets if t.resolved_at]
-    if not resolved:
-        return None
-    return round(100 * sum(1 for t in resolved if t.resolved_at <= due_at(t)) / len(resolved))
-
-
-def admin_dashboard(db, date_from, date_to):
-    # Tickets reported in the date range: the tiles, response times, categories and locations.
-    query = select(Ticket)
+def range_filter(date_from, date_to):
+    """The tickets reported in the date range, as conditions a query adds to its WHERE."""
+    in_range = []
     if date_from:
-        query = query.where(Ticket.created_at >= date_from)
+        in_range.append(Ticket.created_at >= date_from)
     if date_to:
-        query = query.where(Ticket.created_at < date_to + timedelta(days=1))  # "to" includes that day
-    tickets = db.scalars(query.order_by(Ticket.created_at.desc())).all()
+        in_range.append(Ticket.created_at < date_to + timedelta(days=1))  # "to" includes that day
+    return in_range
 
-    # Unfinished work right now, whatever the date range: Needs attention and the workload bars.
+
+def admin_dashboard(db, user, date_from, date_to):
+    in_range = range_filter(date_from, date_to)
     now = datetime.now(timezone.utc)
-    unfinished = db.scalars(select(Ticket).where(Ticket.status.in_(UNFINISHED))).all()
-    overdue = sorted((t for t in unfinished if due_at(t) < now), key=due_at)  # most late first
-    waiting = sorted((t for t in unfinished if t.status == "open"),
-                     key=lambda t: (PRIORITIES.index(t.priority), t.created_at))  # the order auto-assign uses
-    blocked = sorted((t for t in unfinished if t.status == "blocked"), key=lambda t: t.updated_at)
+    deadline = Ticket.created_at + timedelta(days=DUE_DAYS)
+    unfinished = Ticket.status.in_(UNFINISHED)
 
+    def grouped(*columns, where=(), joins=(), limit=None):
+        """[(column values..., count)] for tickets matching `where`, biggest count first."""
+        query = select(*columns, func.count()).select_from(Ticket)
+        for join in joins:
+            query = query.join(join)
+        query = query.where(*where).group_by(*columns).order_by(func.count().desc())
+        return db.execute(query.limit(limit)).all()
+
+    def ticket_list(where, order):
+        """The first LIST_SIZE matching tickets, and how many match altogether."""
+        total = db.scalar(select(func.count()).select_from(Ticket).where(*where))
+        rows = db.scalars(select(Ticket).where(*where).order_by(*order).limit(LIST_SIZE).options(*ROW_OPTIONS))
+        return TicketList(total=total, tickets=[ticket_row(t) for t in rows])
+
+    # Tiles: tickets in the range by status.
+    status_counts = dict(grouped(Ticket.status, where=in_range))
+    by_status = {status: status_counts.get(status, 0) for status in STATUSES}
+
+    # Response times for tickets in the range. Postgres works out the averages in seconds.
+    def average_seconds(later):
+        return func.avg(func.extract("epoch", later - Ticket.created_at))
+
+    assign_secs, resolve_secs, resolved, on_time = db.execute(
+        select(average_seconds(Ticket.assigned_at), average_seconds(Ticket.resolved_at),
+               func.count(Ticket.resolved_at), func.count().filter(Ticket.resolved_at <= deadline)).where(*in_range)
+    ).one()
+
+    # Engineers: unfinished right now, and on-time % for their tickets in the range.
+    open_counts = dict(grouped(Ticket.assignee_id, where=[unfinished]))
+    on_time_by = {engineer_id: (count, good) for engineer_id, count, good in db.execute(
+        select(Ticket.assignee_id, func.count(), func.count().filter(Ticket.resolved_at <= deadline))
+        .where(Ticket.resolved_at.is_not(None), *in_range).group_by(Ticket.assignee_id)
+    )}
     engineers = []
-    for user in db.scalars(select(User).join(User.engineer_profile).where(User.is_active).order_by(User.full_name)):
-        theirs = [t for t in tickets if t.assignee_id == user.id]
+    # Workload per sub-specialty: {category id: WorkloadRow}, every category, filled in below.
+    waiting_counts = dict(grouped(Ticket.category_id, where=[Ticket.status == "open"]))
+    workload = {c.id: WorkloadRow(category_name=c.name, type=c.type, on_duty=0, used=0, capacity=0,
+                                  waiting=waiting_counts.get(c.id, 0))
+                for c in db.scalars(select(TicketCategory).order_by(TicketCategory.type, TicketCategory.id))}
+    for engineer in db.scalars(select(User).join(User.engineer_profile).where(User.is_active).order_by(User.full_name)
+                               .options(selectinload(User.engineer_profile).selectinload(EngineerProfile.category))):
+        profile = engineer.engineer_profile
+        count, good = on_time_by.get(engineer.id, (0, 0))
         engineers.append(EngineerRow(
-            id=user.id, full_name=user.full_name, specialty=user.engineer_profile.specialty,
-            availability=user.engineer_profile.availability,
-            open_tickets=sum(1 for t in unfinished if t.assignee_id == user.id),
-            on_time_percent=on_time_percent(theirs),
+            id=engineer.id, full_name=engineer.full_name, category_name=profile.category.name,
+            specialty=profile.specialty, availability=profile.availability,
+            open_tickets=open_counts.get(engineer.id, 0), on_time_percent=percent(good, count),
         ))
+        row = workload[profile.category_id]
+        row.used += open_counts.get(engineer.id, 0)
+        if profile.availability != "off_duty":
+            row.on_duty += 1
+            row.capacity += MAX_OPEN_TICKETS
 
-    categories = Counter((t.category.name, t.category.type) for t in tickets)
-
-    # Escalations: every one waiting for review, plus those decided on tickets in the date range.
-    pending = db.scalars(select(Ticket).where(Ticket.escalation_status == "pending").order_by(Ticket.updated_at)).all()
-    decided = sorted((t for t in tickets if t.escalation_status in ("approved", "rejected")),
-                     key=lambda t: t.updated_at, reverse=True)
+    priority_counts = dict(grouped(Ticket.priority, where=[unfinished]))
+    pending = Ticket.escalation_status == "pending"
+    decided = Ticket.escalation_status.in_(["approved", "rejected"])
 
     return AdminDashboard(
-        total=len(tickets),
-        by_status=count_by_status(tickets),
-        by_priority=count_by_priority(unfinished),
+        total=sum(by_status.values()),
+        by_status=by_status,
+        averages=Averages(hours_to_assign=hours(assign_secs), hours_to_resolve=hours(resolve_secs),
+                          percent_on_time=percent(on_time, resolved)),
+        categories=[Bar(label=name, type=kind, value=n) for name, kind, n in
+                    grouped(TicketCategory.name, TicketCategory.type, joins=[Ticket.category], where=in_range)],
+        by_priority=[Bar(label=p.capitalize(), value=priority_counts.get(p, 0)) for p in PRIORITIES],
         ticket_cap=MAX_OPEN_TICKETS,
         engineers=engineers,
-        averages=Averages(
-            hours_to_assign=average_hours([t.assigned_at - t.created_at for t in tickets if t.assigned_at]),
-            hours_to_resolve=average_hours([t.resolved_at - t.created_at for t in tickets if t.resolved_at]),
-            percent_on_time=on_time_percent(tickets),
-        ),
+        workload=list(workload.values()),
         waiting_to_close=db.scalar(select(func.count()).select_from(Ticket).where(Ticket.status == "resolved")),
-        categories=[Bar(label=name, type=kind, value=value) for (name, kind), value in categories.most_common()],
-        top_buildings=top(Counter(t.building.name for t in tickets)),
-        top_floors=top(Counter(f"{t.building.name} · {t.floor.name}" for t in tickets if t.floor)),
-        top_seats=top(Counter(f"{t.seat.code} ({t.building.name})" for t in tickets if t.seat)),
-        overdue=[ticket_row(t) for t in overdue],
-        waiting=[ticket_row(t) for t in waiting],
-        blocked=[ticket_row(t) for t in blocked],
-        escalations=[ticket_row(t) for t in [*pending, *decided]],
+        overdue=ticket_list([unfinished, deadline < now], [Ticket.created_at]),  # most late first
+        waiting=ticket_list([Ticket.status == "open"], [PRIORITY_ORDER, Ticket.created_at]),  # auto-assign's order
+        blocked=ticket_list([Ticket.status == "blocked"], [Ticket.updated_at]),  # longest first
+        pending_escalations=ticket_list([pending], [Ticket.updated_at]),
+        decided_escalations=ticket_list([decided, *in_range], [Ticket.updated_at.desc()]),
+        submitted=submitted_view(db, user),
     )
 
+
+def location_report(db, date_from, date_to, building_id, floor_id):
+    """
+    Tickets per location for the Locations report, one level at a time: every building, then
+    (with building_id) that building's floors, then (with floor_id too) that floor's seats.
+    """
+    in_range = range_filter(date_from, date_to)
+
+    def count_by(*columns, join, where):
+        query = (select(*columns, func.count(Ticket.id)).select_from(Ticket).outerjoin(join)
+                 .where(*in_range, *where).group_by(*columns).order_by(func.count(Ticket.id).desc()))
+        return [LocationRow(id=item_id, label=label or "No seat given", value=n) for item_id, label, n in db.execute(query)]
+
+    if building_id is None:
+        rows = count_by(Building.id, Building.name, join=Ticket.building, where=[])
+        return LocationReport(level="buildings", rows=rows)
+    building = db.get(Building, building_id)
+    if building is None:
+        raise AppError(400, "not_found", "Building not found")
+    if floor_id is None:
+        rows = count_by(Floor.id, Floor.name, join=Ticket.floor, where=[Ticket.building_id == building_id])
+        return LocationReport(level="floors", building_name=building.name, rows=rows)
+    floor = db.get(Floor, floor_id)
+    if floor is None or floor.building_id != building_id:
+        raise AppError(400, "not_found", "Floor not found")
+    rows = count_by(Seat.id, Seat.code, join=Ticket.seat, where=[Ticket.floor_id == floor_id])
+    return LocationReport(level="seats", building_name=building.name, floor_name=floor.name, rows=rows)
+
+
+# ---------- Engineer and employee ----------
 
 def news_since(ticket, seen_at, user_id):
     """What happened since this person last looked: a note from someone else, or a change."""
@@ -152,7 +227,8 @@ def with_news(db, user, tickets):
 
 def submitted_view(db, user):
     """The tickets this person submitted: the employee dashboard and the engineer's second tab."""
-    mine = db.scalars(select(Ticket).where(Ticket.reporter_id == user.id).order_by(Ticket.updated_at.desc())).all()
+    mine = db.scalars(select(Ticket).where(Ticket.reporter_id == user.id).order_by(Ticket.updated_at.desc())
+                      .options(*NEWS_OPTIONS)).all()
     rows = with_news(db, user, mine)
     # News first, then unfinished, then Resolved / Closed (each keeps newest change first).
     rows.sort(key=lambda r: (r.news is None, r.status not in UNFINISHED))
@@ -160,7 +236,8 @@ def submitted_view(db, user):
 
 
 def engineer_dashboard(db, user):
-    assigned = db.scalars(select(Ticket).where(Ticket.assignee_id == user.id, Ticket.status != "closed")).all()
+    assigned = db.scalars(select(Ticket).where(Ticket.assignee_id == user.id, Ticket.status != "closed")
+                          .options(*NEWS_OPTIONS)).all()
     now = datetime.now(timezone.utc)
 
     def working_order(row):
@@ -189,7 +266,19 @@ def dashboard(
     db: Session = Depends(get_db),
 ):
     if user.role == "admin":
-        return admin_dashboard(db, date_from, date_to)
+        return admin_dashboard(db, user, date_from, date_to)
     if user.role == "engineer":
         return engineer_dashboard(db, user)
     return employee_dashboard(db, user)
+
+
+@router.get("/locations", response_model=LocationReport)
+def locations(
+    date_from: date | None = Query(None, alias="from"),
+    date_to: date | None = Query(None, alias="to"),
+    building_id: int | None = None,
+    floor_id: int | None = None,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    return location_report(db, date_from, date_to, building_id, floor_id)

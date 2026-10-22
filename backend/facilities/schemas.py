@@ -1,39 +1,96 @@
 """What each facilities request must contain and what each reply returns."""
 
-from pydantic import BaseModel, ConfigDict, field_validator
+import re
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from _shared.validation import check, check_email, check_person, check_phone
+
+# The characters each kind of text may use. Anything else (e.g. ! @ $) is refused.
+# (People's names, emails and phones use the shared rules in _shared/validation.py.)
+NAME = re.compile(r"[A-Za-z0-9 -]+")  # building and floor names: "North Tower - East Wing"
+CODE = re.compile(r"[A-Z0-9]{2,6}")  # building codes: "HQ", "RT2"
+SEAT = re.compile(r"[A-Z0-9-]+")  # seat codes: "HQ-201"
+ADDRESS = re.compile(r"[A-Za-z0-9 ,.\-#/']+")  # "1200 Main St, Suite #4"
+
+MAX_FLOORS = 100
+MAX_SEATS = 500  # per floor
 
 
-def not_blank(value, message):
-    value = value.strip()
-    if not value:
-        raise ValueError(message)
+def check_name(value):
+    value = check(value, NAME, "Only letters, numbers, spaces and hyphens (-)")
+    if not 2 <= len(value) <= 80:
+        raise ValueError("Between 2 and 80 characters")
     return value
 
 
 class BuildingIn(BaseModel):
+    code: str
     name: str
-    address: str | None = None
+    address: str
+    manager_name: str | None = None
+    manager_email: str | None = None
+    manager_phone: str | None = None
+
+    @field_validator("code")
+    @classmethod
+    def clean_code(cls, value):
+        return check(value.upper(), CODE, "2 to 6 letters or numbers, e.g. HQ")
 
     @field_validator("name")
     @classmethod
     def clean_name(cls, value):
-        return not_blank(value, "Please enter a name")
+        return check_name(value)
 
     @field_validator("address")
     @classmethod
     def clean_address(cls, value):
-        # An empty address is saved as "no address".
-        if value is None or not value.strip():
-            return None
-        return value.strip()
+        return check(value, ADDRESS, "Only letters, numbers, spaces and , . - # / '")
+
+    @field_validator("manager_name")
+    @classmethod
+    def clean_manager_name(cls, value):
+        return check_person(value, required=False)
+
+    @field_validator("manager_email")
+    @classmethod
+    def clean_manager_email(cls, value):
+        return check_email(value, required=False)
+
+    @field_validator("manager_phone")
+    @classmethod
+    def clean_manager_phone(cls, value):
+        return check_phone(value)
+
+
+class FloorPlan(BaseModel):
+    """One floor made together with a new building: its name and how many seats."""
+
+    name: str
+    seats: int = Field(0, ge=0, le=MAX_SEATS)
+
+    @field_validator("name")
+    @classmethod
+    def clean_name(cls, value):
+        return check_name(value)
+
+
+class NewBuildingIn(BuildingIn):
+    """Creating a building also creates its floors (levels 1, 2, 3...) and their seats."""
+
+    floors: list[FloorPlan] = Field(min_length=1, max_length=MAX_FLOORS)
 
 
 class BuildingOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    code: str
     name: str
-    address: str | None
+    address: str
+    manager_name: str | None
+    manager_email: str | None
+    manager_phone: str | None
     floor_count: int
 
 
@@ -44,7 +101,11 @@ class FloorIn(BaseModel):
     @field_validator("name")
     @classmethod
     def clean_name(cls, value):
-        return not_blank(value, "Please enter a name, e.g. Floor 2")
+        return check_name(value)
+
+
+class NewFloorIn(FloorIn):
+    seats: int = Field(0, ge=0, le=MAX_SEATS)
 
 
 class FloorOut(BaseModel):
@@ -63,7 +124,13 @@ class SeatIn(BaseModel):
     @field_validator("code")
     @classmethod
     def clean_code(cls, value):
-        return not_blank(value, "Please enter a seat code, e.g. HQ-201").upper()
+        return check(value.upper(), SEAT, "Only letters, numbers and hyphens, e.g. HQ-201")
+
+
+class SeatCount(BaseModel):
+    """Add this many seats to a floor, numbered after the ones it already has."""
+
+    count: int = Field(ge=1, le=MAX_SEATS)
 
 
 class SeatOut(BaseModel):

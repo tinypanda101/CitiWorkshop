@@ -1,11 +1,12 @@
 // The ticket list: search, filters and sort over the tickets you're allowed to see.
 // Every filter goes to the API as a query parameter, e.g. /api/tickets/?q=wifi&status=open
+// The API sends one page at a time (25 by default) and the total, for the pager under the table.
 
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
-  Alert, Box, Chip, Link, MenuItem, Paper, Snackbar, Stack, Table, TableBody, TableCell,
-  TableContainer, TableHead, TableRow, TextField, Typography,
+  Alert, Autocomplete, Box, Chip, Link, MenuItem, Paper, Snackbar, Stack, Table, TableBody, TableCell,
+  TableContainer, TableHead, TablePagination, TableRow, TextField, Typography,
 } from '@mui/material'
 import Layout from '../components/Layout'
 import { PriorityChip, StatusChip } from '../components/TicketChips'
@@ -15,7 +16,7 @@ import { formatDate, formatLocation, PRIORITY_NAMES, STATUS_NAMES } from '../tic
 
 const NO_FILTERS = {
   status: '', priority: '', category_id: '', building_id: '', floor_id: '', assigned_to: '', escalation: '',
-  from: '', to: '',
+  overdue: '', from: '', to: '',
 }
 
 const ESCALATION_NAMES = { pending: 'Waiting for review', approved: 'Approved', rejected: 'Rejected' }
@@ -34,8 +35,10 @@ export default function TicketsPage() {
     const fromLink = Object.fromEntries(new URLSearchParams(location.search))
     return Object.fromEntries(Object.entries(NO_FILTERS).map(([key, value]) => [key, fromLink[key] ?? value]))
   })
-  const [sort, setSort] = useState('newest')
-  const [tickets, setTickets] = useState(null) // null = still loading
+  const [sort, setSort] = useState(() => new URLSearchParams(location.search).get('sort') || 'newest')
+  const [page, setPage] = useState(0) // TablePagination counts pages from 0; the API from 1
+  const [perPage, setPerPage] = useState(25)
+  const [result, setResult] = useState(null) // { tickets, total }; null = still loading
   const [categories, setCategories] = useState([])
   const [buildings, setBuildings] = useState([])
   const [floors, setFloors] = useState([])
@@ -58,12 +61,15 @@ export default function TicketsPage() {
 
   // Wait until typing stops for 300 ms before searching, instead of one request per key.
   useEffect(() => {
-    const timer = setTimeout(() => setQ(search.trim()), 300)
+    const timer = setTimeout(() => {
+      setQ(search.trim())
+      setPage(0)
+    }, 300)
     return () => clearTimeout(timer)
   }, [search])
 
   // The query string for the API, e.g. "sort=newest&q=wifi&status=open".
-  const params = new URLSearchParams({ sort })
+  const params = new URLSearchParams({ sort, page: page + 1, per_page: perPage })
   if (q) params.set('q', q)
   for (const [key, value] of Object.entries(filters)) {
     if (value !== '') params.set(key, value)
@@ -72,17 +78,19 @@ export default function TicketsPage() {
 
   // Reload whenever the query changes.
   useEffect(() => {
-    api('tickets', `/?${query}`).then(setTickets).catch((err) => setError(err.message))
+    api('tickets', `/?${query}`).then(setResult).catch((err) => setError(err.message))
   }, [query])
+  const tickets = result?.tickets ?? null
 
   function setFilter(key, value) {
     const next = { ...filters, [key]: value }
     if (key === 'building_id') { next.floor_id = ''; setFloors([]) } // floors belong to one building
     setFilters(next)
+    setPage(0)
   }
 
   function clearAll() {
-    setSearch(''); setQ(''); setFilters(NO_FILTERS); setFloors([])
+    setSearch(''); setQ(''); setFilters(NO_FILTERS); setFloors([]); setPage(0)
   }
 
   // The chips above the table, one per active filter. Each can be removed on its own.
@@ -96,12 +104,19 @@ export default function TicketsPage() {
     filters.floor_id && { key: 'floor_id', label: `Floor: ${nameOf(floors, filters.floor_id)}` },
     filters.assigned_to && {
       key: 'assigned_to',
-      label: `Assigned to: ${filters.assigned_to === 'none' ? 'Nobody' : nameOf(engineers, filters.assigned_to, 'full_name')}`,
+      label: `Assigned to: ${filters.assigned_to === 'none' ? 'Nobody' : nameOf(engineers, Number(filters.assigned_to), 'full_name')}`,
     },
     filters.escalation && { key: 'escalation', label: `Escalation: ${ESCALATION_NAMES[filters.escalation]}` },
+    filters.overdue && { key: 'overdue', label: 'Overdue only' },
     filters.from && { key: 'from', label: `From: ${filters.from}` },
     filters.to && { key: 'to', label: `To: ${filters.to}` },
   ].filter(Boolean)
+
+  // The Assigned to choices: "Nobody yet", then every engineer with their sub-specialty.
+  const assigneeOptions = [
+    { id: 'none', label: 'Nobody yet' },
+    ...engineers.map((e) => ({ id: e.id, label: `${e.full_name} · ${e.category_name}` })),
+  ]
 
   function selectProps(key, label) {
     return {
@@ -141,11 +156,12 @@ export default function TicketsPage() {
               {floors.map((f) => <MenuItem key={f.id} value={f.id}>{f.name}</MenuItem>)}
             </TextField>
             {isAdmin && (
-              <TextField {...selectProps('assigned_to', 'Assigned to')}>
-                <MenuItem value="">Anyone</MenuItem>
-                <MenuItem value="none">Nobody yet</MenuItem>
-                {engineers.map((e) => <MenuItem key={e.id} value={e.id}>{e.full_name}</MenuItem>)}
-              </TextField>
+              // Type part of a name to narrow the list. Empty = anyone.
+              <Autocomplete size="small" sx={{ minWidth: 240 }} options={assigneeOptions}
+                value={assigneeOptions.find((o) => String(o.id) === String(filters.assigned_to)) ?? null}
+                onChange={(e, option) => setFilter('assigned_to', option ? option.id : '')}
+                getOptionLabel={(o) => o.label} isOptionEqualToValue={(o, v) => o.id === v.id}
+                renderInput={(inputProps) => <TextField {...inputProps} label="Assigned to" placeholder="Type a name" />} />
             )}
             <TextField {...selectProps('escalation', 'Escalation')}>
               <MenuItem value="">Any</MenuItem>
@@ -155,7 +171,7 @@ export default function TicketsPage() {
               onChange={(e) => setFilter('from', e.target.value)} slotProps={{ inputLabel: { shrink: true } }} />
             <TextField size="small" type="date" label="Reported to" value={filters.to}
               onChange={(e) => setFilter('to', e.target.value)} slotProps={{ inputLabel: { shrink: true } }} />
-            <TextField select size="small" label="Sort" value={sort} onChange={(e) => setSort(e.target.value)}
+            <TextField select size="small" label="Sort" value={sort} onChange={(e) => { setSort(e.target.value); setPage(0) }}
               sx={{ minWidth: 200 }}>
               {Object.entries(SORTS).map(([value, name]) => <MenuItem key={value} value={value}>{name}</MenuItem>)}
             </TextField>
@@ -207,6 +223,9 @@ export default function TicketsPage() {
             ))}
           </TableBody>
         </Table>
+        <TablePagination component="div" count={result?.total ?? 0} page={page} rowsPerPage={perPage}
+          rowsPerPageOptions={[25, 50, 100]} onPageChange={(e, next) => setPage(next)}
+          onRowsPerPageChange={(e) => { setPerPage(Number(e.target.value)); setPage(0) }} />
       </TableContainer>
 
       <Snackbar open={!!message} message={message} autoHideDuration={4000} onClose={() => setMessage('')}

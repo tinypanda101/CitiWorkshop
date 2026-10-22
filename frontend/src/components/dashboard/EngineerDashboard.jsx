@@ -10,10 +10,10 @@ import { CountTile, Section } from './DashboardParts'
 import { api } from '../../services/api'
 
 const TILES = [
-  { status: 'assigned', name: 'Assigned', meaning: 'To start', edge: 'info.main' },
-  { status: 'in_progress', name: 'In Progress', meaning: 'You are working on it', edge: 'primary.main' },
-  { status: 'blocked', name: 'Blocked', meaning: 'On hold', edge: 'error.main' },
-  { status: 'resolved', name: 'Resolved', meaning: 'Waiting to be closed', edge: 'success.main' },
+  { status: 'assigned', name: 'Assigned', edge: 'info.main' },
+  { status: 'in_progress', name: 'In Progress', edge: 'primary.main' },
+  { status: 'blocked', name: 'Blocked', edge: 'error.main' },
+  { status: 'resolved', name: 'Resolved', edge: 'success.main' },
 ]
 
 export default function EngineerDashboard({ user }) {
@@ -41,10 +41,10 @@ export default function EngineerDashboard({ user }) {
       {tab === 'assigned' ? (
         <>
           <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(5, 1fr)' } }}>
-            <CountTile count={total} name="Total" meaning="Assigned to you, not closed" edge="secondary.main" />
-            {TILES.map((t) => <CountTile key={t.status} count={data.by_status[t.status]} name={t.name} meaning={t.meaning} edge={t.edge} />)}
+            <CountTile count={total} name="Total" edge="secondary.main" />
+            {TILES.map((t) => <CountTile key={t.status} count={data.by_status[t.status]} name={t.name} edge={t.edge} />)}
           </Box>
-          <Section title="My assigned tickets" note="Overdue first, then highest priority, then due soonest">
+          <Section title="My assigned tickets">
             <AssignedTickets rows={data.assigned} />
           </Section>
         </>

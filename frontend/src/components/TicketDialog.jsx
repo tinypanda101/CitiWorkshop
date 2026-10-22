@@ -14,11 +14,21 @@ import { PRIORITY_NAMES } from '../ticketLabels'
 
 const EMPTY = { title: '', description: '', category_id: '', building_id: '', floor_id: '', seat_code: '', priority: 'low' }
 
+// Employees can't submit at High or Critical, but can ask for it: the ticket starts at Medium
+// with an escalation request (and its reason) already waiting for an admin.
+const REQUESTS = { request_high: 'high', request_critical: 'critical' }
+const CHOICE_NAMES = { ...PRIORITY_NAMES, request_high: 'Request High', request_critical: 'Request Critical' }
+
 // The form keeps '' for "nothing picked"; the API wants null.
-function toBody(values, showPriority) {
+function toBody(values, showPriority, reason) {
   const body = { ...values }
   for (const key of ['category_id', 'building_id', 'floor_id']) {
     body[key] = body[key] === '' ? null : body[key]
+  }
+  if (REQUESTS[body.priority]) {
+    body.requested_priority = REQUESTS[body.priority]
+    body.escalation_reason = reason
+    body.priority = 'medium'
   }
   if (!showPriority) delete body.priority
   return body
@@ -27,9 +37,11 @@ function toBody(values, showPriority) {
 export default function TicketDialog({ ticket, onSaved, onClose }) {
   const { user } = useAuth()
   const isNew = !ticket
-  // Submitting: Low or Medium. Editing: only admins see priority, with all four levels.
-  // (The other priority rules, like asking for High, come in step 6.)
-  const priorities = isNew ? ['low', 'medium'] : user.role === 'admin' ? Object.keys(PRIORITY_NAMES) : []
+  // Submitting: employees pick Low or Medium, or request High or Critical (with a reason);
+  // admins and engineers can pick any level. Editing: only admins see priority.
+  const anyLevel = user.role === 'admin' || user.role === 'engineer'
+  const priorities = isNew ? (anyLevel ? Object.keys(PRIORITY_NAMES) : ['low', 'medium', ...Object.keys(REQUESTS)])
+    : user.role === 'admin' ? Object.keys(PRIORITY_NAMES) : []
   const showPriority = priorities.length > 0
   // Editing starts from the ticket's own values (only the fields this form has).
   const [values, setValues] = useState(() => (ticket
@@ -38,6 +50,7 @@ export default function TicketDialog({ ticket, onSaved, onClose }) {
   const [categories, setCategories] = useState([])
   const [buildings, setBuildings] = useState([])
   const [floors, setFloors] = useState([])
+  const [reason, setReason] = useState('') // why it needs the priority asked for
   const [fieldErrors, setFieldErrors] = useState({})
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -67,7 +80,7 @@ export default function TicketDialog({ ticket, onSaved, onClose }) {
     setFieldErrors({})
     try {
       const saved = await api('tickets', isNew ? '/' : `/${ticket.id}`, {
-        method: isNew ? 'POST' : 'PUT', body: toBody(values, showPriority),
+        method: isNew ? 'POST' : 'PUT', body: toBody(values, showPriority, reason),
       })
       onSaved(saved)
     } catch (err) {
@@ -117,13 +130,14 @@ export default function TicketDialog({ ticket, onSaved, onClose }) {
               <div>
                 <Typography variant="body2" color="text.secondary" gutterBottom>Priority</Typography>
                 <ToggleButtonGroup exclusive size="small" color="primary" value={values.priority}
-                  onChange={(e, value) => value && change('priority', value)}>
-                  {priorities.map((p) => <ToggleButton key={p} value={p}>{PRIORITY_NAMES[p]}</ToggleButton>)}
+                  onChange={(e, value) => value && change('priority', value)} sx={{ flexWrap: 'wrap' }}>
+                  {priorities.map((p) => <ToggleButton key={p} value={p}>{CHOICE_NAMES[p]}</ToggleButton>)}
                 </ToggleButtonGroup>
-                {isNew && (
-                  <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
-                    Need it treated as High or Critical? You can request that on the ticket once it's submitted.
-                  </Typography>
+                {REQUESTS[values.priority] && (
+                  <TextField label="Why does it need this priority?" required multiline minRows={2} fullWidth sx={{ mt: 2 }}
+                    value={reason} onChange={(e) => setReason(e.target.value)}
+                    error={Boolean(fieldErrors.escalation_reason)}
+                    helperText={fieldErrors.escalation_reason || "It's submitted at Medium, and an admin reviews your request."} />
                 )}
               </div>
             )}

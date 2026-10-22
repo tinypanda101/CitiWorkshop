@@ -45,9 +45,9 @@ export function allowedPriorities(user, ticket) {
 
 // Employees see three simple stages instead of the six statuses.
 export const EMPLOYEE_STAGES = {
-  assigned: { name: 'Assigned', meaning: 'An engineer has it or is being found', color: 'info' },
-  in_progress: { name: 'In Progress', meaning: 'An engineer is working on it', color: 'warning' },
-  resolved: { name: 'Resolved', meaning: 'Fixed', color: 'success' },
+  assigned: { name: 'Assigned', color: 'info' }, // an engineer has it, or one is being found
+  in_progress: { name: 'In Progress', color: 'warning' },
+  resolved: { name: 'Resolved', color: 'success' },
 }
 
 // Which stage a status counts as: Open (still waiting for an engineer) is shown under

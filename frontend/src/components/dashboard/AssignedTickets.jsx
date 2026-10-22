@@ -59,7 +59,7 @@ export default function AssignedTickets({ rows }) {
         </Box>
       )}
       <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5 }}>
-        A blue dot means a new note or change since you last opened it. Every ticket is due 3 days after it's submitted.
+        A blue dot means a new note or change since you last opened it.
       </Typography>
     </>
   )

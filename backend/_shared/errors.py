@@ -45,7 +45,9 @@ def add_error_handlers(app: FastAPI):
         # FastAPI would send 422 with a list; we send 400 with {field: message}.
         details = {}
         for error in exc.errors():
-            field = str(error["loc"][-1]) if error["loc"] else "body"
+            # ("body", "name") -> "name"; a field inside a list, ("body", "floors", 0, "name") -> "floors.0.name"
+            loc = [str(part) for part in error["loc"]]
+            field = ".".join(loc[1:]) if len(loc) > 1 else "body"
             details[field] = error["msg"].removeprefix("Value error, ")
         return error_response(400, "validation_error", "Please check the highlighted fields", details)
 

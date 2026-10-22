@@ -13,7 +13,13 @@ from schemas import LoginRequest, PasswordChangeRequest, RegisterRequest, TokenO
 router = APIRouter()
 
 
-@router.post("/register", response_model=TokenOut)
+@router.get("/ping")
+def ping():
+    """Answers straight away (no login, no database). The app calls it on opening to start this service up."""
+    return {"ok": True}
+
+
+@router.post("/register", response_model=TokenOut, status_code=201)
 def register(body: RegisterRequest, db: Session = Depends(get_db)):
     """Sign up as an employee. You're logged in straight away."""
     if db.scalar(select(User).where(User.email == body.email)) is not None:

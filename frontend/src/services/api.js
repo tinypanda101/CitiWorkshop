@@ -66,3 +66,14 @@ export async function api(service, path, { method = 'GET', body } = {}) {
   }
   return data
 }
+
+// Each service is its own Lambda, and one that hasn't been used for a while takes a second or
+// two to start ("cold start"). On opening, the app pings every service in the background so
+// they've started by the time a page needs them. The replies are ignored.
+const SERVICES = ['auth', 'users', 'tickets', 'facilities', 'dashboard']
+
+export function warmUp() {
+  for (const service of SERVICES) {
+    fetch(`${API_URL}/api/${service}/ping`).catch(() => {})
+  }
+}

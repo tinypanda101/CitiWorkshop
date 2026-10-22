@@ -1,8 +1,9 @@
 // My account: who you are and changing your password. (Engineers set their availability in the top bar.)
 
 import { useState } from 'react'
-import { Alert, Button, Paper, Snackbar, Stack, TextField, Typography } from '@mui/material'
+import { Alert, Button, Paper, Snackbar, Stack, Typography } from '@mui/material'
 import Layout from '../components/Layout'
+import PasswordField from '../components/PasswordField'
 import { api } from '../services/api'
 import { useAuth } from '../services/AuthContext'
 import { ROLE_NAMES } from '../roles'
@@ -43,7 +44,7 @@ export default function AccountPage() {
 
   function passwordProps(name, label, hint) {
     return {
-      label, type: 'password', required: true, value: passwords[name],
+      label, required: true, value: passwords[name],
       onChange: (e) => setPasswords({ ...passwords, [name]: e.target.value }),
       error: Boolean(fieldErrors[name]), helperText: fieldErrors[name] || hint,
     }
@@ -62,9 +63,9 @@ export default function AccountPage() {
           <Typography variant="h6" component="h2" gutterBottom>Change password</Typography>
           <Stack component="form" spacing={2} onSubmit={changePassword} noValidate>
             {error && <Alert severity="error">{error}</Alert>}
-            <TextField autoComplete="current-password" {...passwordProps('current_password', 'Current password')} />
-            <TextField autoComplete="new-password" {...passwordProps('new_password', 'New password', 'At least 8 characters')} />
-            <TextField autoComplete="new-password" {...passwordProps('confirm', 'Confirm new password')} />
+            <PasswordField autoComplete="current-password" {...passwordProps('current_password', 'Current password')} />
+            <PasswordField autoComplete="new-password" {...passwordProps('new_password', 'New password', 'At least 8 characters')} />
+            <PasswordField autoComplete="new-password" {...passwordProps('confirm', 'Confirm new password')} />
             <Button type="submit" variant="contained" disabled={saving} sx={{ alignSelf: 'flex-start' }}>
               {saving ? 'Saving…' : 'Change password'}
             </Button>

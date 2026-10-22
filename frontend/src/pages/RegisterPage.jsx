@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link as RouterLink, Navigate, useNavigate } from 'react-router-dom'
 import { Alert, Button, Link, Stack, TextField, Typography } from '@mui/material'
 import AuthCard from '../components/AuthCard'
+import PasswordField from '../components/PasswordField'
 import { useAuth } from '../services/AuthContext'
 
 export default function RegisterPage() {
@@ -31,7 +32,7 @@ export default function RegisterPage() {
       await register(form.fullName, form.email, form.password)
       navigate('/')
     } catch (err) {
-      // The API names the field for each problem, e.g. { email: 'Must be an @acme.inc email address' }.
+      // The API names the field for each problem, e.g. { email: 'Must be an @acme.inc email, e.g. …' }.
       setFieldErrors({ ...err.details, fullName: err.details.full_name })
       if (Object.keys(err.details).length === 0) setError(err.message)
     } finally {
@@ -47,9 +48,9 @@ export default function RegisterPage() {
           error={Boolean(fieldErrors.fullName)} helperText={fieldErrors.fullName} required autoFocus />
         <TextField label="Email" type="email" autoComplete="email" value={form.email} onChange={update('email')}
           error={Boolean(fieldErrors.email)} helperText={fieldErrors.email || 'Use your @acme.inc address'} required />
-        <TextField label="Password" type="password" autoComplete="new-password" value={form.password} onChange={update('password')}
+        <PasswordField label="Password" autoComplete="new-password" value={form.password} onChange={update('password')}
           error={Boolean(fieldErrors.password)} helperText={fieldErrors.password || 'At least 8 characters'} required />
-        <TextField label="Confirm password" type="password" autoComplete="new-password" value={form.confirm} onChange={update('confirm')}
+        <PasswordField label="Confirm password" autoComplete="new-password" value={form.confirm} onChange={update('confirm')}
           error={Boolean(fieldErrors.confirm)} helperText={fieldErrors.confirm} required />
         <Button type="submit" variant="contained" size="large" disabled={saving}>
           {saving ? 'Creating account…' : 'Create account'}

@@ -1,8 +1,8 @@
 """
 Automatic assignment: every ticket goes to an engineer as soon as one can take it.
 
-Who gets a ticket: an active engineer whose specialty matches the ticket's category type
-(facility or technology), who is Available (or else Busy, never Off duty) and has fewer than
+Who gets a ticket: an active engineer whose sub-specialty is the ticket's category (e.g.
+Plumbing), who is Available (or else Busy, never Off duty) and has fewer than
 MAX_OPEN_TICKETS unfinished tickets. Among those, the one with the fewest; on a tie, the one
 who was given a ticket longest ago.
 
@@ -34,22 +34,23 @@ def assign(ticket, engineer):
 
 def pick_engineer(db, ticket):
     """The engineer who should get this ticket now, or None if nobody can take it."""
-    engineers = db.scalars(
-        select(User).join(User.engineer_profile).where(
+    # One query: each matching engineer with their unfinished count and when they last got a ticket.
+    unfinished = (select(func.count()).where(Ticket.assignee_id == User.id, Ticket.status.in_(UNFINISHED))
+                  .scalar_subquery())
+    last_given = select(func.max(Ticket.assigned_at)).where(Ticket.assignee_id == User.id).scalar_subquery()
+    rows = db.execute(
+        select(User, unfinished, last_given).join(User.engineer_profile).where(
             User.is_active,
-            EngineerProfile.specialty == ticket.category.type,
+            EngineerProfile.category_id == ticket.category_id,
             EngineerProfile.availability.in_(list(AVAILABILITY_ORDER)),
         )
     ).all()
 
     best, best_key = None, None
-    for engineer in engineers:
-        unfinished = db.scalar(select(func.count()).select_from(Ticket).where(
-            Ticket.assignee_id == engineer.id, Ticket.status.in_(UNFINISHED)))
-        if unfinished >= MAX_OPEN_TICKETS:
+    for engineer, open_count, last in rows:
+        if open_count >= MAX_OPEN_TICKETS:
             continue
-        last_given = db.scalar(select(func.max(Ticket.assigned_at)).where(Ticket.assignee_id == engineer.id)) or LONG_AGO
-        key = (AVAILABILITY_ORDER[engineer.engineer_profile.availability], unfinished, last_given)
+        key = (AVAILABILITY_ORDER[engineer.engineer_profile.availability], open_count, last or LONG_AGO)
         if best_key is None or key < best_key:
             best, best_key = engineer, key
     return best
@@ -64,10 +65,13 @@ def assign_waiting_tickets(db, skip_ticket_id=None):
         select(Ticket).where(Ticket.status == "open", Ticket.assignee_id.is_(None))
         .order_by(PRIORITY_ORDER, Ticket.created_at)
     ).all()
+    full = set()  # categories where nobody could take a ticket, so the rest of them can be skipped
     for ticket in waiting:
-        if ticket.id == skip_ticket_id:
+        if ticket.id == skip_ticket_id or ticket.category_id in full:
             continue
         engineer = pick_engineer(db, ticket)
         if engineer:
             assign(ticket, engineer)
             db.flush()  # so the next pick counts this ticket
+        else:
+            full.add(ticket.category_id)

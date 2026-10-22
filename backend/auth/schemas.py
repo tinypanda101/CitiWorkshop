@@ -2,26 +2,23 @@
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from _shared.validation import check_email, check_person
+
 
 class RegisterRequest(BaseModel):
-    full_name: str = Field(min_length=1)
+    full_name: str
     email: str
     password: str = Field(min_length=8)
 
     @field_validator("full_name")
     @classmethod
-    def name_not_blank(cls, value):
-        if not value.strip():
-            raise ValueError("Please enter your name")
-        return value.strip()
+    def clean_full_name(cls, value):
+        return check_person(value)
 
     @field_validator("email")
     @classmethod
-    def acme_email(cls, value):
-        value = value.strip().lower()
-        if not value.endswith("@acme.inc") or value == "@acme.inc":
-            raise ValueError("Must be an @acme.inc email address")
-        return value
+    def clean_email(cls, value):
+        return check_email(value)
 
 
 class LoginRequest(BaseModel):

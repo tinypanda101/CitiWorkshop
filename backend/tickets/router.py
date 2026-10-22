@@ -10,22 +10,30 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import case, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy import case, func, or_, select
+from sqlalchemy.orm import Session, selectinload
 
-from _shared.assignment import assign, assign_waiting_tickets
+from _shared.assignment import assign, assign_waiting_tickets, pick_engineer
 from _shared.database import get_db
 from _shared.errors import AppError
 from _shared.models import (
-    Building, Floor, Seat, Ticket, TicketCategory, TicketNote, TicketView, User, due_at, ticket_number,
+    DUE_DAYS, UNFINISHED, Building, Floor, Seat, Ticket, TicketCategory, TicketNote, TicketView, User, due_at,
+    ticket_number,
 )
 from _shared.security import get_current_user, require_admin
 from schemas import (
     AssignIn, EscalationDecision, EscalationRequest, NoteIn, NoteOut, PriorityIn, StatusIn,
-    TicketAdminEdit, TicketIn, TicketOut,
+    TicketAdminEdit, TicketIn, TicketOut, TicketPage,
 )
 
 router = APIRouter()
+
+
+@router.get("/ping")
+def ping():
+    """Answers straight away (no login, no database). The app calls it on opening to start this service up."""
+    return {"ok": True}
+
 
 Status = Literal["open", "assigned", "in_progress", "blocked", "resolved", "closed"]
 Priority = Literal["low", "medium", "high", "critical"]
@@ -33,6 +41,10 @@ Priority = Literal["low", "medium", "high", "critical"]
 # For "highest priority first": critical = 1 ... low = 4.
 PRIORITY_ORDER = case({"critical": 1, "high": 2, "medium": 3, "low": 4}, value=Ticket.priority)
 PRIORITY_RANK = {"low": 1, "medium": 2, "high": 3, "critical": 4}
+
+# What a ticket in the list shows, loaded in a few batched queries instead of one per ticket.
+ROW_OPTIONS = [selectinload(Ticket.category), selectinload(Ticket.building), selectinload(Ticket.floor),
+               selectinload(Ticket.seat), selectinload(Ticket.reporter), selectinload(Ticket.assignee)]
 
 # The status workflow for engineers: from each status, where they may move a ticket next.
 # Open -> Assigned happens by assigning (automatically or by an admin), not by a status change.
@@ -122,7 +134,7 @@ def ticket_out(ticket):
     )
 
 
-@router.get("/", response_model=list[TicketOut])
+@router.get("/", response_model=TicketPage)
 def list_tickets(
     q: str | None = None,
     status: Status | None = None,
@@ -132,9 +144,12 @@ def list_tickets(
     floor_id: int | None = None,
     assigned_to: str | None = None,  # an engineer's id, or "none" for unassigned
     escalation: Literal["pending", "approved", "rejected"] | None = None,
+    overdue: bool = False,  # only unfinished tickets past their deadline
     date_from: date | None = Query(None, alias="from"),
     date_to: date | None = Query(None, alias="to"),
     sort: Literal["newest", "oldest", "priority"] = "newest",
+    page: int = Query(1, ge=1),
+    per_page: int = Query(25, ge=1, le=100),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -165,6 +180,9 @@ def list_tickets(
         query = query.where(Ticket.assignee_id == int(assigned_to))
     if escalation:
         query = query.where(Ticket.escalation_status == escalation)
+    if overdue:
+        deadline = datetime.now(timezone.utc) - timedelta(days=DUE_DAYS)
+        query = query.where(Ticket.status.in_(UNFINISHED), Ticket.created_at < deadline)
     if date_from:
         query = query.where(Ticket.created_at >= date_from)
     if date_to:
@@ -178,13 +196,27 @@ def list_tickets(
     else:
         query = query.order_by(Ticket.created_at.desc(), Ticket.id.desc())
 
-    return [ticket_out(t) for t in db.scalars(query)]
+    # One page at a time, plus how many match altogether (for "1–50 of 9,812").
+    total = db.scalar(select(func.count()).select_from(query.order_by(None).subquery()))
+    page_query = query.limit(per_page).offset((page - 1) * per_page).options(*ROW_OPTIONS)
+    return TicketPage(tickets=[ticket_out(t) for t in db.scalars(page_query)], total=total)
 
 
-@router.post("/", response_model=TicketOut)
+@router.post("/", response_model=TicketOut, status_code=201)
 def create_ticket(body: TicketIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    asking = user.role == "employee" and body.requested_priority is not None
+    if user.role == "employee" and body.priority not in ("low", "medium"):
+        raise AppError(400, "validation_error", "Employees can submit at Low or Medium",
+                       {"priority": "Pick Low or Medium, or request High or Critical."})
+    if asking and not (body.escalation_reason or "").strip():
+        raise AppError(400, "validation_error", "Please check the highlighted fields",
+                       {"escalation_reason": "Please say why it needs a higher priority"})
     seat_id = check_location(db, body)
-    ticket = Ticket(**body.model_dump(exclude={"seat_code"}), seat_id=seat_id, reporter_id=user.id, status="open")
+    fields = body.model_dump(exclude={"seat_code", "requested_priority", "escalation_reason"})
+    ticket = Ticket(**fields, seat_id=seat_id, reporter_id=user.id, status="open")
+    if asking:  # starts at Medium, with the request waiting for an admin
+        ticket.priority = "medium"
+        start_escalation(ticket, body.requested_priority, body.escalation_reason.strip())
     db.add(ticket)
     db.flush()
     # Hand it (and anything else waiting) to an engineer straight away, if one can take it.
@@ -212,12 +244,11 @@ def edit_ticket(ticket_id: int, body: TicketAdminEdit, admin: User = Depends(req
     return ticket_out(ticket)
 
 
-@router.delete("/{ticket_id}")
+@router.delete("/{ticket_id}", status_code=204)
 def delete_ticket(ticket_id: int, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
     ticket = get_visible_ticket(db, admin, ticket_id)
     db.delete(ticket)  # its notes go too
     db.commit()
-    return {"message": f"{ticket_number(ticket_id)} deleted"}
 
 
 @router.put("/{ticket_id}/assignee", response_model=TicketOut)
@@ -247,6 +278,26 @@ def assign_ticket(ticket_id: int, body: AssignIn, admin: User = Depends(require_
 
 
 # ---------- Status workflow ----------
+
+@router.post("/{ticket_id}/auto-assign", response_model=TicketOut)
+def auto_assign_ticket(ticket_id: int, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    """
+    The admin's Auto-assign button: gives the ticket to whoever auto-assign would pick (same
+    sub-specialty, Available before Busy, never Off duty, under the cap, least busy first).
+    """
+    ticket = get_visible_ticket(db, admin, ticket_id)
+    if ticket.status not in UNFINISHED:
+        raise AppError(409, "finished", "This ticket is already resolved or closed")
+    engineer = pick_engineer(db, ticket)
+    if engineer is None:
+        raise AppError(409, "nobody_free", f"Every {ticket.category.name} engineer is full or Off duty. "
+                       "Pick someone from the list to go over the cap.")
+    if engineer.id != ticket.assignee_id:
+        assign(ticket, engineer)
+    db.commit()
+    db.refresh(ticket)
+    return ticket_out(ticket)
+
 
 def is_assigned_engineer(user, ticket):
     return user.role == "engineer" and ticket.assignee_id == user.id
@@ -294,6 +345,13 @@ def change_status(ticket_id: int, body: StatusIn, user: User = Depends(get_curre
 
 # ---------- Priority and escalation ----------
 
+def start_escalation(ticket, requested_priority, reason):
+    """Puts a request for a higher priority on the ticket, waiting for an admin to review it."""
+    ticket.escalation_status = "pending"
+    ticket.requested_priority = requested_priority
+    ticket.escalation_reason = reason
+
+
 def allowed_priorities(user, ticket):
     """
     The levels this user may set on this ticket. The reporter picks Low or Medium when
@@ -326,9 +384,7 @@ def request_escalation(ticket_id: int, body: EscalationRequest, user: User = Dep
     if PRIORITY_RANK[body.requested_priority] <= PRIORITY_RANK[ticket.priority]:
         raise AppError(400, "validation_error", "Please check the highlighted fields",
                        {"requested_priority": "Pick a higher priority than the current one"})
-    ticket.escalation_status = "pending"
-    ticket.requested_priority = body.requested_priority
-    ticket.escalation_reason = body.reason
+    start_escalation(ticket, body.requested_priority, body.reason)
     db.commit()
     db.refresh(ticket)
     return ticket_out(ticket)
@@ -359,7 +415,6 @@ def mark_seen(ticket_id: int, user: User = Depends(get_current_user), db: Sessio
     view.seen_at = datetime.now(timezone.utc)
     db.add(view)
     db.commit()
-    return {"message": "Seen"}
 
 
 # ---------- Notes ----------
@@ -376,7 +431,7 @@ def list_notes(ticket_id: int, user: User = Depends(get_current_user), db: Sessi
     return [note_out(n) for n in ticket.notes]  # oldest first (see Ticket.notes)
 
 
-@router.post("/{ticket_id}/notes", response_model=NoteOut)
+@router.post("/{ticket_id}/notes", response_model=NoteOut, status_code=201)
 def add_note(ticket_id: int, body: NoteIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     ticket = get_visible_ticket(db, user, ticket_id)
     # Anyone who can see it may add notes (reporter, assigned engineer, admin);
@@ -408,9 +463,8 @@ def edit_note(note_id: int, body: NoteIn, user: User = Depends(get_current_user)
     return note_out(note)
 
 
-@router.delete("/notes/{note_id}")
+@router.delete("/notes/{note_id}", status_code=204)
 def delete_note(note_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     note = get_own_note(db, user, note_id, admin_allowed=True)
     db.delete(note)
     db.commit()
-    return {"message": "Note deleted"}
