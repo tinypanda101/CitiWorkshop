@@ -11,3 +11,6 @@
 
 # The tests and their settings (backend/tests).
 !/tests/*.py
+
+# The mockdata service's generator (also run locally by scripts/mock_data.py).
+!/mockdata/mock_data.py

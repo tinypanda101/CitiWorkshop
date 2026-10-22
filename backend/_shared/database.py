@@ -2,7 +2,8 @@
 The database connection every service uses.
 
 Settings come from the environment variables every Lambda gets (infra/locals.tf).
-The defaults are the local PostgreSQL used during development.
+The defaults are the local PostgreSQL used during development. On AWS (IS_LOCAL is "false")
+the connection must use SSL (sslmode=require), as the workshop guide asks for Aurora.
 """
 
 import os
@@ -18,6 +19,7 @@ DATABASE_URL = URL.create(
     host=os.getenv("POSTGRES_HOST", "localhost"),
     port=int(os.getenv("POSTGRES_PORT", "5432")),
     database=os.getenv("POSTGRES_NAME", "postgres"),
+    query={"sslmode": "require"} if os.getenv("IS_LOCAL") == "false" else {},
 )
 
 # The engine keeps connections open and reuses them between Lambda calls.

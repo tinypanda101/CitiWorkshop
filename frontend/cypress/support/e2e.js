@@ -6,11 +6,14 @@ Cypress.Commands.add('apiLogin', (email) => {
     .its('body.token')
 })
 
-// A call to the API as whoever owns the token. The local proxy drops the Authorization
-// header, so (like the app in development) the token also goes in the address.
+// A call to the API as whoever owns the token. AWS reads the Authorization header; the local
+// proxy drops that header, so (like the app in development) the token also goes in the address.
 Cypress.Commands.add('api', (token, method, path, body) => {
   const join = path.includes('?') ? '&' : '?'
-  return cy.request({ method, url: `${Cypress.expose('apiUrl')}/api${path}${join}token=${token}`, body, failOnStatusCode: false })
+  return cy.request({
+    method, url: `${Cypress.expose('apiUrl')}/api${path}${join}token=${token}`, body, failOnStatusCode: false,
+    headers: { Authorization: `Bearer ${token}` },
+  })
 })
 
 // Opens a page already signed in as this person (skips the login form). The ?as= part makes

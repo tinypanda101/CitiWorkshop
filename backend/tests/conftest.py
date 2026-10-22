@@ -22,7 +22,7 @@ import pytest
 # This has to happen before any app code is imported: _shared/database.py reads it once.
 TEST_DATABASE = "acme_test"
 os.environ["POSTGRES_NAME"] = TEST_DATABASE
-os.environ["IS_LOCAL"] = "false"  # the tests send tokens in the header, like the real site
+os.environ.pop("IS_LOCAL", None)  # not LocalStack (no ?token= in URLs) and not AWS (no SSL needed)
 
 BACKEND = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND))  # so "_shared" is backend/_shared
