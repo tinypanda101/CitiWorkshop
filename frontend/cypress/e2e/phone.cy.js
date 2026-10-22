@@ -26,7 +26,7 @@ describe('On a phone', () => {
     cy.visitAs(Cypress.expose('employee'))
     cy.contains('h1', 'My tickets')
     fitsTheScreen()
-    cy.intercept('POST', '**/api/tickets/*').as('submit')
+    cy.intercept('POST', /\/api\/tickets\/(\?.*)?$/).as('submit') // the submit request, with or without ?token=
     cy.contains('button', 'Submit a ticket').click()
     cy.get('.MuiDialog-paperFullScreen').should('be.visible')
     cy.field('Title').type(title)

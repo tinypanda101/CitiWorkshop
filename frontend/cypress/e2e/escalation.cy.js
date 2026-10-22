@@ -14,7 +14,7 @@ describe('Requesting a higher priority', () => {
 
   it('needs a reason, then reaches the admin, who approves it', () => {
     cy.visitAs(Cypress.expose('employee'))
-    cy.intercept('POST', '**/api/tickets/*').as('submit')
+    cy.intercept('POST', /\/api\/tickets\/(\?.*)?$/).as('submit') // the submit request, with or without ?token=
     cy.contains('button', 'Submit a ticket').click()
     cy.field('Title').type(title)
     cy.field('Description').type('There is a puddle on the main stairs.')

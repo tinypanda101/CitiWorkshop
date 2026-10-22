@@ -91,6 +91,14 @@ npx cypress run     # all journeys, headless (about a minute)
 npx cypress open    # the visual runner: watch each step in a browser
 ```
 
+**Against the AWS site**, after `scripts/load-mock-data-aws.sh` (the journeys use the mock accounts):
+
+```sh
+npx cypress run --config baseUrl=https://<cloudfront>.cloudfront.net --expose apiUrl=https://<cloudfront>.cloudfront.net
+```
+
+All 7 pass there too, and every journey cleans up after itself.
+
 | Journey | Checks |
 |---|---|
 | `ticket-journey.cy.js` | An employee logs in and submits a ticket → it's auto-assigned to an HVAC engineer → the engineer starts it, adds a note and resolves it → an admin closes it → the employee sees the "new" dot, the fix and the note |
@@ -127,5 +135,7 @@ Each journey deletes what it created, so the data is the same afterwards.
     `cypress.config.js`.
   - Cypress's built-in browser warns that it's being phased out. `npx cypress run --browser firefox`
     also works.
-- **Where the tests run:** they run locally, not against the AWS deployment, and nothing runs them
-  automatically on each push.
+- **Where the tests run:**
+  - The backend and frontend suites run locally.
+  - The Cypress journeys run locally and against the AWS site.
+  - Nothing runs them automatically on each push. GitHub only runs the provided security checks.

@@ -22,7 +22,7 @@ describe('A ticket from start to finish', () => {
     cy.contains('button', 'Log in').click()
     cy.contains('h1', 'My tickets')
 
-    cy.intercept('POST', '**/api/tickets/*').as('submit')
+    cy.intercept('POST', /\/api\/tickets\/(\?.*)?$/).as('submit') // the submit request, with or without ?token=
     cy.contains('button', 'Submit a ticket').click()
     cy.field('Title').type(title)
     // Typed at a person's pace: at Cypress's usual 10 ms a key, MUI's auto-sizing text box can loop
