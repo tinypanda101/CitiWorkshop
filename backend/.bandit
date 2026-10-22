@@ -1,0 +1,6 @@
+# Settings Bandit reads when it scans this folder (the GitHub "Security Check - Python" workflow
+# runs `bandit -r ./backend`). The tests are left out: pytest tests are written with `assert`
+# (Bandit's B101) and use the mock-data passwords such as "password1" (B105), which are fine in
+# tests. All the app code is still scanned.
+[bandit]
+exclude = ./backend/tests
