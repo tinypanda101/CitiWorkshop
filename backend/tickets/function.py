@@ -8,14 +8,14 @@ then open http://localhost:8003/docs.
 """
 
 from fastapi import FastAPI
-from mangum import Mangum
 
 from _shared.errors import add_error_handlers
+from _shared.lambda_handler import lambda_handler
 from router import router
 
 app = FastAPI(title="tickets")
 add_error_handlers(app)
 app.include_router(router)
 
-# api_gateway_base_path strips the /api/tickets prefix that CloudFront passes in AWS.
-handler = Mangum(app, api_gateway_base_path="/api/tickets")
+# Strips the /api/tickets prefix that CloudFront passes in AWS (see _shared/lambda_handler.py).
+handler = lambda_handler(app, "/api/tickets")

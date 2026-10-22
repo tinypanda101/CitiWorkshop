@@ -11,9 +11,9 @@ then open http://localhost:8001/docs.
 """
 
 from fastapi import FastAPI
-from mangum import Mangum
 
 from _shared.errors import add_error_handlers
+from _shared.lambda_handler import lambda_handler
 from _shared.seed import create_tables, seed
 from router import router
 
@@ -25,5 +25,5 @@ app = FastAPI(title="auth")
 add_error_handlers(app)
 app.include_router(router)
 
-# api_gateway_base_path strips the /api/auth prefix that CloudFront passes in AWS.
-handler = Mangum(app, api_gateway_base_path="/api/auth")
+# Strips the /api/auth prefix that CloudFront passes in AWS (see _shared/lambda_handler.py).
+handler = lambda_handler(app, "/api/auth")
