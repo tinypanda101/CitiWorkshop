@@ -1,18 +1,22 @@
 // Admin page for buildings → floors → seats, in three linked columns.
-// Pick a building to see its floors; pick a floor to see its seats. A new building comes with
+// Pick a building to see its floors; pick a floor to see its seats. On a phone only one column
+// shows at a time, with a link back up, and each row's Edit / Delete is in a ⋮ menu. A new building comes with
 // its floors and seats (BuildingDialog); a new floor can come with seats, and seats can be
 // added to a floor several at a time.
 
 import { useEffect, useState } from 'react'
 import {
-  Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle,
-  Link, List, ListItemButton, ListItemText, Paper, Snackbar, Stack, Typography,
+  Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, IconButton,
+  Link, List, ListItemButton, ListItemText, Menu, MenuItem, Paper, Snackbar, Stack, Typography,
 } from '@mui/material'
+import ChevronLeft from '@mui/icons-material/ChevronLeft'
+import MoreVert from '@mui/icons-material/MoreVert'
 import Layout from '../components/Layout'
 import BuildingDialog from '../components/BuildingDialog'
 import FacilityDialog from '../components/FacilityDialog'
 import { formatPhone } from '../phone'
 import { api } from '../services/api'
+import { useIsPhone } from '../services/useIsPhone'
 
 // Everything that differs between buildings, floors and seats.
 const KINDS = {
@@ -54,10 +58,33 @@ const ADD_SEATS_FIELDS = [
   { name: 'count', label: 'How many seats?', type: 'number', hint: 'Numbered after the seats the floor already has' },
 ]
 
+// A row's Edit and Delete: two links, or on a phone a ⋮ button that opens them as a menu.
+function RowActions({ item, onEdit, onDelete }) {
+  const isPhone = useIsPhone()
+  const [anchor, setAnchor] = useState(null) // the ⋮ button while its menu is open
+  if (!isPhone) {
+    return (
+      <Stack direction="row" spacing={1.5}>
+        <Link component="button" variant="body2" onClick={() => onEdit(item)}>Edit</Link>
+        <Link component="button" variant="body2" color="error" onClick={() => onDelete(item)}>Delete</Link>
+      </Stack>
+    )
+  }
+  return (
+    <>
+      <IconButton edge="end" aria-label="More actions" onClick={(e) => setAnchor(e.currentTarget)}><MoreVert /></IconButton>
+      <Menu anchorEl={anchor} open={Boolean(anchor)} onClose={() => setAnchor(null)}>
+        <MenuItem onClick={() => { setAnchor(null); onEdit(item) }}>Edit</MenuItem>
+        <MenuItem onClick={() => { setAnchor(null); onDelete(item) }} sx={{ color: 'error.main' }}>Delete</MenuItem>
+      </Menu>
+    </>
+  )
+}
+
 function FacilityColumn({ title, kind, items, selectedId, onSelect, onAdd, onAddMany, onEdit, onDelete, emptyText }) {
   const config = KINDS[kind]
   return (
-    <Paper variant="outlined" sx={{ flex: 1, minWidth: 0 }}>
+    <Paper variant="outlined" sx={{ flex: 1, minWidth: 0, width: '100%' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 1.5, borderBottom: 1, borderColor: 'divider' }}>
         <Typography variant="subtitle1" component="h2" sx={{ flexGrow: 1, fontWeight: 500 }}>{title}</Typography>
         {onAddMany && <Button size="small" variant="outlined" onClick={onAddMany}>+ Add several</Button>}
@@ -74,10 +101,9 @@ function FacilityColumn({ title, kind, items, selectedId, onSelect, onAdd, onAdd
               onClick={onSelect ? () => onSelect(item) : undefined} disableRipple={!onSelect}
               sx={{ cursor: onSelect ? 'pointer' : 'default' }}>
               <ListItemText primary={config.primary(item)} secondary={config.secondary(item)} />
-              <Stack direction="row" spacing={1.5} onClick={(e) => e.stopPropagation()}>
-                <Link component="button" variant="body2" onClick={() => onEdit(item)}>Edit</Link>
-                <Link component="button" variant="body2" color="error" onClick={() => onDelete(item)}>Delete</Link>
-              </Stack>
+              <Box onClick={(e) => e.stopPropagation()}>
+                <RowActions item={item} onEdit={onEdit} onDelete={onDelete} />
+              </Box>
             </ListItemButton>
           ))}
         </List>
@@ -166,6 +192,19 @@ export default function FacilitiesPage() {
     }
   }
 
+  // On a phone, one column at a time: buildings, then the picked building's floors, then the
+  // picked floor's seats. The link at the top goes back up a level.
+  const isPhone = useIsPhone()
+  const showColumn = isPhone
+    ? { buildings: !building, floors: Boolean(building) && !floor, seats: Boolean(floor) }
+    : { buildings: true, floors: true, seats: true }
+  function backToBuildings() {
+    setBuilding(null); setFloors(null); setFloor(null); setSeats(null)
+  }
+  function backToFloors() {
+    setFloor(null); setSeats(null)
+  }
+
   // Floors and seats use the simple FacilityDialog; buildings and "add several seats" have their own.
   const editingConfig = ['floor', 'seat'].includes(editing?.kind) && KINDS[editing.kind]
 
@@ -176,7 +215,7 @@ export default function FacilitiesPage() {
         Pick a building to see its floors, then a floor to see its seats.
       </Typography>
       {error && <Alert severity="error" onClose={() => setError('')} sx={{ mb: 2 }}>{error}</Alert>}
-      {building && (
+      {building && (!isPhone || !floor) && (
         <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
           <Typography sx={{ fontWeight: 500 }}>{building.name} ({building.code})</Typography>
           <Typography variant="body2" color="text.secondary">{building.address}</Typography>
@@ -186,22 +225,28 @@ export default function FacilitiesPage() {
         </Paper>
       )}
 
+      {isPhone && building && (
+        <Link component="button" variant="body2" onClick={floor ? backToFloors : backToBuildings}
+          sx={{ display: 'flex', alignItems: 'center', mb: 1.5 }}>
+          <ChevronLeft fontSize="small" />{floor ? `Floors in ${building.name}` : 'Buildings'}
+        </Link>
+      )}
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems="flex-start">
-        <FacilityColumn title="Buildings" kind="building" items={buildings} selectedId={building?.id}
+        {showColumn.buildings && <FacilityColumn title="Buildings" kind="building" items={buildings} selectedId={building?.id}
           onSelect={pickBuilding} onAdd={() => setEditing({ kind: 'building', item: null })}
           onEdit={(item) => setEditing({ kind: 'building', item })}
-          onDelete={(item) => setDeleting({ kind: 'building', item })} />
-        <FacilityColumn title={building ? `Floors in ${building.name}` : 'Floors'} kind="floor" items={floors}
+          onDelete={(item) => setDeleting({ kind: 'building', item })} />}
+        {showColumn.floors && <FacilityColumn title={building ? `Floors in ${building.name}` : 'Floors'} kind="floor" items={floors}
           selectedId={floor?.id} onSelect={pickFloor} emptyText="Pick a building first."
           onAdd={building ? () => setEditing({ kind: 'floor', item: null }) : null}
           onEdit={(item) => setEditing({ kind: 'floor', item })}
-          onDelete={(item) => setDeleting({ kind: 'floor', item })} />
-        <FacilityColumn title={floor ? `Seats on ${floor.name}` : 'Seats'} kind="seat" items={seats}
+          onDelete={(item) => setDeleting({ kind: 'floor', item })} />}
+        {showColumn.seats && <FacilityColumn title={floor ? `Seats on ${floor.name}` : 'Seats'} kind="seat" items={seats}
           emptyText="Pick a floor first."
           onAdd={floor ? () => setEditing({ kind: 'seat', item: null }) : null}
           onAddMany={floor ? () => setEditing({ kind: 'seats', item: null }) : null}
           onEdit={(item) => setEditing({ kind: 'seat', item })}
-          onDelete={(item) => setDeleting({ kind: 'seat', item })} />
+          onDelete={(item) => setDeleting({ kind: 'seat', item })} />}
       </Stack>
 
       {editing?.kind === 'building' && (

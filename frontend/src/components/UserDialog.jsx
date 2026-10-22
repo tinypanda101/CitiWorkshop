@@ -3,9 +3,9 @@
 
 import { useEffect, useState } from 'react'
 import {
-  Alert, Button, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, ListSubheader, MenuItem,
-  Stack, Switch, TextField,
+  Alert, Button, DialogActions, DialogContent, DialogTitle, FormControlLabel, ListSubheader, MenuItem, Stack, Switch, TextField,
 } from '@mui/material'
+import Dialog from './ResponsiveDialog' // full screen on phones
 import PasswordField from './PasswordField'
 import PhoneField from './PhoneField'
 import { api } from '../services/api'

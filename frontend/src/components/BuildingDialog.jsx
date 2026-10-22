@@ -4,8 +4,9 @@
 
 import { useState } from 'react'
 import {
-  Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, Divider, Stack, TextField, Typography,
+  Alert, Box, Button, DialogActions, DialogContent, DialogTitle, Divider, Stack, TextField, Typography,
 } from '@mui/material'
+import Dialog from './ResponsiveDialog' // full screen on phones
 import PhoneField from './PhoneField'
 
 const MAX_FLOORS = 100 // the API's limit: every floor and its seats are made in one request

@@ -21,17 +21,19 @@ export function Section({ title, note, action, children, sx }) {
 }
 
 // A count with a coloured top edge, e.g. "3 / In Progress / An engineer is working on it".
-// `meaning` is optional. With `to`, the tile is a link to that page.
+// `meaning` is optional. With `to`, the tile is a link to that page. On a phone (xs) the tile is
+// compact: a smaller number, the name, and no meaning line, so several fit across.
 export function CountTile({ count, name, meaning, edge, to }) {
   const link = to ? { component: RouterLink, to } : {}
   return (
     <Paper variant="outlined" {...link} sx={{
-      p: 2, borderTop: 4, borderTopColor: edge, textDecoration: 'none', color: 'inherit',
+      p: { xs: 1, sm: 2 }, borderTopStyle: 'solid', borderTopWidth: { xs: 3, sm: 4 }, borderTopColor: edge, textDecoration: 'none', color: 'inherit',
+      minWidth: 0,
       ...(to && { '&:hover': { bgcolor: 'action.hover' } }),
     }}>
-      <Typography variant="h3" component="p" sx={{ fontWeight: 400, fontVariantNumeric: 'tabular-nums' }}>{count}</Typography>
-      <Typography variant="subtitle1" sx={{ fontWeight: 500 }}>{name}</Typography>
-      {meaning && <Typography variant="body2" color="text.secondary">{meaning}</Typography>}
+      <Typography variant="h3" component="p" sx={{ fontWeight: 400, fontVariantNumeric: 'tabular-nums', fontSize: { xs: '1.5rem', sm: '3rem' } }}>{count}</Typography>
+      <Typography variant="subtitle1" sx={{ fontWeight: 500, fontSize: { xs: '0.75rem', sm: '1rem' }, lineHeight: { xs: 1.3, sm: 1.75 } }}>{name}</Typography>
+      {meaning && <Typography variant="body2" color="text.secondary" sx={{ display: { xs: 'none', sm: 'block' } }}>{meaning}</Typography>}
     </Paper>
   )
 }
@@ -41,11 +43,11 @@ export function CountTile({ count, name, meaning, edge, to }) {
 export function LinkTile({ to, count, name, meaning, edge = 'divider' }) {
   return (
     <Paper variant="outlined" component={RouterLink} to={to} sx={{
-      p: 1.5, display: 'flex', alignItems: 'center', gap: 1.5, borderLeft: 4, borderLeftColor: edge,
+      p: { xs: 1, sm: 1.5 }, display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 1.5 }, borderLeft: 4, borderLeftColor: edge,
       textDecoration: 'none', color: 'inherit', '&:hover': { bgcolor: 'action.hover' },
     }}>
       {count !== undefined && (
-        <Typography variant="h4" component="span" sx={{ minWidth: 32, fontVariantNumeric: 'tabular-nums' }}>{count}</Typography>
+        <Typography variant="h4" component="span" sx={{ minWidth: { xs: 24, sm: 32 }, fontVariantNumeric: 'tabular-nums', fontSize: { xs: '1.5rem', sm: '2.125rem' } }}>{count}</Typography>
       )}
       <Box sx={{ flexGrow: 1 }}>
         <Typography sx={{ fontWeight: 500 }}>{name}</Typography>

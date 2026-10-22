@@ -85,7 +85,7 @@ export default function AdminDashboard({ user }) {
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
           {plural(data.total, 'ticket')} reported {describeRange(range)}. Click a tile to see those tickets.
         </Typography>
-        <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { xs: '1fr 1fr', sm: 'repeat(4, 1fr)', lg: 'repeat(7, 1fr)' } }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(4, 1fr)', lg: 'repeat(7, 1fr)' }, gap: { xs: 1, sm: 1.5 } }}>
           <CountTile count={data.total} name="Total" meaning="Reported in range" edge="secondary.main" to={ticketsLink()} />
           {TILES.map((t) => (
             <CountTile key={t.status} count={data.by_status[t.status]} name={t.name} meaning={t.meaning} edge={t.edge}
@@ -95,7 +95,7 @@ export default function AdminDashboard({ user }) {
       </div>
 
       <Section title="Needs attention">
-        <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', lg: 'repeat(4, 1fr)' } }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', lg: 'repeat(4, 1fr)' }, gap: { xs: 1, sm: 1.5 } }}>
           <LinkTile to={reportLink('overdue')} count={data.overdue.total} name="Overdue" edge="error.main" />
           <LinkTile to={reportLink('escalations')} count={data.pending_escalations.total} name="Escalations" edge="warning.main" />
           <LinkTile to={reportLink('blocked')} count={data.blocked.total} name="Blocked" edge="error.main" />
@@ -112,7 +112,7 @@ export default function AdminDashboard({ user }) {
           {Object.entries(SPECIALTY_NAMES).map(([type, typeName]) => (
             <div key={type}>
               <Typography variant="subtitle2" gutterBottom>{typeName}</Typography>
-              <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: 'repeat(5, 1fr)' } }}>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(5, 1fr)' }, gap: { xs: 1, sm: 1.5 } }}>
                 {data.workload.filter((w) => w.type === type).map((w) => (
                   <WorkloadTile key={w.category_name} workload={w}
                     to={`/reports/engineers?${new URLSearchParams({ category: w.category_name, ...Object.fromEntries(params) })}`} />

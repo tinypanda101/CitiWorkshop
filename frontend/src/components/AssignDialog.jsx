@@ -5,8 +5,9 @@
 
 import { useEffect, useState } from 'react'
 import {
-  Alert, Button, Dialog, DialogActions, DialogContent, DialogTitle, ListItemText, ListSubheader, MenuItem, TextField,
+  Alert, Button, DialogActions, DialogContent, DialogTitle, ListItemText, ListSubheader, MenuItem, TextField,
 } from '@mui/material'
+import Dialog from './ResponsiveDialog' // full screen on phones
 import { api } from '../services/api'
 import { AVAILABILITY_NAMES } from '../roles'
 

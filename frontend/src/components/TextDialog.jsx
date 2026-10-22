@@ -3,7 +3,8 @@
 // `onSave(text)` may throw an ApiError; its message is shown in the popup.
 
 import { useState } from 'react'
-import { Alert, Button, Dialog, DialogActions, DialogContent, DialogTitle, Stack, TextField } from '@mui/material'
+import { Alert, Button, DialogActions, DialogContent, DialogTitle, Stack, TextField } from '@mui/material'
+import Dialog from './ResponsiveDialog' // full screen on phones
 
 export default function TextDialog({ title, label, saveLabel = 'Save', onSave, onClose, children }) {
   const [text, setText] = useState('')

@@ -3,9 +3,9 @@
 // wrong, and the notes. They can't change anything else after submitting.
 
 import { useEffect, useState } from 'react'
-import {
-  Alert, Box, Dialog, DialogContent, DialogTitle, IconButton, Typography,
-} from '@mui/material'
+import { Alert, Box, DialogContent, DialogTitle, IconButton, Typography } from '@mui/material'
+import CloseIcon from '@mui/icons-material/Close'
+import Dialog from '../ResponsiveDialog' // full screen on phones
 import EscalationRequest from '../EscalationRequest'
 import TicketNotes from '../TicketNotes'
 import { StageChip } from '../TicketChips'
@@ -31,13 +31,13 @@ export default function MyTicketDialog({ ticketId, user, onClose }) {
   }, [ticketId])
 
   return (
-    <Dialog open onClose={onClose} fullWidth maxWidth="sm" scroll="body">
+    <Dialog open onClose={onClose} fullWidth maxWidth="sm" scroll="body" closeButton={false}>
       <DialogTitle sx={{ display: 'flex', alignItems: 'flex-start', gap: 2, pr: 1 }}>
         <Box sx={{ flexGrow: 1 }}>
           <Typography variant="body2" color="text.secondary">{ticket?.number}</Typography>
           <Typography variant="h6" component="span">{ticket?.title || 'Loading…'}</Typography>
         </Box>
-        <IconButton aria-label="Close" onClick={onClose}>✕</IconButton>
+        <IconButton aria-label="Close" onClick={onClose}><CloseIcon /></IconButton>
       </DialogTitle>
       <DialogContent>
         {error && <Alert severity="error">{error}</Alert>}

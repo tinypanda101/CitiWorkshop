@@ -9,7 +9,8 @@ import { AVAILABILITY_NAMES } from '../roles'
 // The dot beside each choice (MUI palette names).
 const DOTS = { available: 'success.light', busy: 'warning.light', off_duty: 'grey.400' }
 
-export default function AvailabilitySelect() {
+// `inMenu`: shown in the phone's side menu (light background) rather than the dark top bar.
+export default function AvailabilitySelect({ inMenu = false }) {
   const [availability, setAvailability] = useState('')
 
   useEffect(() => {
@@ -27,7 +28,7 @@ export default function AvailabilitySelect() {
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
       <Typography variant="body2" component="label" htmlFor="availability">Availability:</Typography>
       <Select id="availability" size="small" value={availability} onChange={(e) => change(e.target.value)}
-        sx={{
+        sx={inMenu ? { fontSize: 14, flexGrow: 1, '.MuiSelect-select': { display: 'flex', alignItems: 'center', gap: 1 } } : {
           color: 'inherit', fontSize: 14, bgcolor: 'rgba(255,255,255,0.12)',
           '.MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.35)' },
           '.MuiSelect-icon': { color: 'inherit' }, '.MuiSelect-select': { py: 0.5, display: 'flex', alignItems: 'center', gap: 1 },

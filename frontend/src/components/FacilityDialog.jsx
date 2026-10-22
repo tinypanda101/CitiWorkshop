@@ -2,7 +2,8 @@
 // to show; `onSave` sends them to the API and may throw an ApiError with field messages.
 
 import { useState } from 'react'
-import { Alert, Button, Dialog, DialogActions, DialogContent, DialogTitle, Stack, TextField } from '@mui/material'
+import { Alert, Button, DialogActions, DialogContent, DialogTitle, Stack, TextField } from '@mui/material'
+import Dialog from './ResponsiveDialog' // full screen on phones
 
 export default function FacilityDialog({ title, fields, initial, onSave, onClose }) {
   const [values, setValues] = useState(initial)

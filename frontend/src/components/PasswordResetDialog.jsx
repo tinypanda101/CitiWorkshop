@@ -3,7 +3,8 @@
 // gets the API's reply, which names whose password it was.
 
 import { useState } from 'react'
-import { Alert, Button, Dialog, DialogActions, DialogContent, DialogTitle, Stack, TextField } from '@mui/material'
+import { Alert, Button, DialogActions, DialogContent, DialogTitle, Stack, TextField } from '@mui/material'
+import Dialog from './ResponsiveDialog' // full screen on phones
 import PasswordField from './PasswordField'
 import { api } from '../services/api'
 

@@ -5,9 +5,9 @@
 
 import { useEffect, useState } from 'react'
 import {
-  Alert, Button, Dialog, DialogActions, DialogContent, DialogTitle, ListSubheader, MenuItem,
-  Stack, TextField, ToggleButton, ToggleButtonGroup, Typography,
+  Alert, Button, DialogActions, DialogContent, DialogTitle, ListSubheader, MenuItem, Stack, TextField, ToggleButton, ToggleButtonGroup, Typography,
 } from '@mui/material'
+import Dialog from './ResponsiveDialog' // full screen on phones
 import { api } from '../services/api'
 import { useAuth } from '../services/AuthContext'
 import { PRIORITY_NAMES } from '../ticketLabels'

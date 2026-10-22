@@ -40,7 +40,7 @@ export default function EngineerDashboard({ user }) {
 
       {tab === 'assigned' ? (
         <>
-          <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(5, 1fr)' } }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(5, 1fr)' }, gap: { xs: 1, sm: 2 } }}>
             <CountTile count={total} name="Total" edge="secondary.main" />
             {TILES.map((t) => <CountTile key={t.status} count={data.by_status[t.status]} name={t.name} edge={t.edge} />)}
           </Box>

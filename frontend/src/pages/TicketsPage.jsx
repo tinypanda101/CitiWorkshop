@@ -3,15 +3,18 @@
 // The API sends one page at a time (25 by default) and the total, for the pager under the table.
 
 import { useEffect, useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { Link as RouterLink, useLocation, useNavigate } from 'react-router-dom'
 import {
-  Alert, Autocomplete, Box, Chip, Link, MenuItem, Paper, Snackbar, Stack, Table, TableBody, TableCell,
+  Alert, Autocomplete, Box, Button, Card, CardActionArea, Chip, Drawer, Link, MenuItem, Paper, Snackbar, Stack,
+  Table, TableBody, TableCell,
   TableContainer, TableHead, TablePagination, TableRow, TextField, Typography,
 } from '@mui/material'
+import FilterList from '@mui/icons-material/FilterList'
 import Layout from '../components/Layout'
 import { PriorityChip, StatusChip } from '../components/TicketChips'
 import { api } from '../services/api'
 import { useAuth } from '../services/AuthContext'
+import { useIsPhone } from '../services/useIsPhone'
 import { formatDate, formatLocation, PRIORITY_NAMES, STATUS_NAMES } from '../ticketLabels'
 
 const NO_FILTERS = {
@@ -23,11 +26,34 @@ const ESCALATION_NAMES = { pending: 'Waiting for review', approved: 'Approved', 
 
 const SORTS = { newest: 'Newest first', oldest: 'Oldest first', priority: 'Highest priority first' }
 
+// A ticket on a phone: number and status, title, then the details on two short lines.
+function TicketCard({ ticket: t }) {
+  return (
+    <Card variant="outlined">
+      <CardActionArea component={RouterLink} to={`/tickets/${t.id}`} sx={{ p: 1.5 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Typography variant="body2" sx={{ fontWeight: 500, color: 'primary.main', flexGrow: 1 }}>{t.number}</Typography>
+          <StatusChip status={t.status} />
+        </Box>
+        <Typography sx={{ mt: 0.5 }}>{t.title}</Typography>
+        <Typography variant="body2" color="text.secondary">
+          {PRIORITY_NAMES[t.priority]} · {t.category_name} · {formatLocation(t)}
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          {t.assignee_name || 'Not assigned'} · {formatDate(t.created_at)}
+        </Typography>
+      </CardActionArea>
+    </Card>
+  )
+}
+
 export default function TicketsPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const { user } = useAuth()
   const isAdmin = user.role === 'admin'
+  const isPhone = useIsPhone()
+  const [filtersOpen, setFiltersOpen] = useState(false) // the phone's filters panel
   const [search, setSearch] = useState('') // what is typed in the search box
   const [q, setQ] = useState('') // the search sent to the API, a moment after typing stops
   // Filters can come in the link, e.g. /tickets?status=blocked from a dashboard tile.
@@ -127,6 +153,55 @@ export default function TicketsPage() {
     }
   }
 
+  // Every filter except the search box. Desktop shows them in a row; a phone opens them in a
+  // panel from the bottom (Filters button), where each one is full width.
+  const filterControls = (
+    <>
+      <TextField {...selectProps('status', 'Status')}>
+        <MenuItem value="">Any</MenuItem>
+        {Object.entries(STATUS_NAMES).map(([value, name]) => <MenuItem key={value} value={value}>{name}</MenuItem>)}
+      </TextField>
+      <TextField {...selectProps('priority', 'Priority')}>
+        <MenuItem value="">Any</MenuItem>
+        {Object.entries(PRIORITY_NAMES).map(([value, name]) => <MenuItem key={value} value={value}>{name}</MenuItem>)}
+      </TextField>
+      <TextField {...selectProps('category_id', 'Category')}>
+        <MenuItem value="">Any</MenuItem>
+        {categories.map((c) => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
+      </TextField>
+      <TextField {...selectProps('building_id', 'Building')}>
+        <MenuItem value="">Any</MenuItem>
+        {buildings.map((b) => <MenuItem key={b.id} value={b.id}>{b.name}</MenuItem>)}
+      </TextField>
+      <TextField {...selectProps('floor_id', 'Floor')} disabled={!filters.building_id}>
+        <MenuItem value="">Any</MenuItem>
+        {floors.map((f) => <MenuItem key={f.id} value={f.id}>{f.name}</MenuItem>)}
+      </TextField>
+      {isAdmin && (
+        // Type part of a name to narrow the list. Empty = anyone.
+        <Autocomplete size="small" sx={{ minWidth: 240 }} options={assigneeOptions}
+          value={assigneeOptions.find((o) => String(o.id) === String(filters.assigned_to)) ?? null}
+          onChange={(e, option) => setFilter('assigned_to', option ? option.id : '')}
+          getOptionLabel={(o) => o.label} isOptionEqualToValue={(o, v) => o.id === v.id}
+          renderInput={(inputProps) => <TextField {...inputProps} label="Assigned to" placeholder="Type a name" />} />
+      )}
+      <TextField {...selectProps('escalation', 'Escalation')}>
+        <MenuItem value="">Any</MenuItem>
+        {Object.entries(ESCALATION_NAMES).map(([value, name]) => <MenuItem key={value} value={value}>{name}</MenuItem>)}
+      </TextField>
+      <TextField size="small" type="date" label="Reported from" value={filters.from}
+        onChange={(e) => setFilter('from', e.target.value)} slotProps={{ inputLabel: { shrink: true } }} />
+      <TextField size="small" type="date" label="Reported to" value={filters.to}
+        onChange={(e) => setFilter('to', e.target.value)} slotProps={{ inputLabel: { shrink: true } }} />
+      <TextField select size="small" label="Sort" value={sort} onChange={(e) => { setSort(e.target.value); setPage(0) }}
+        sx={{ minWidth: 200 }}>
+        {Object.entries(SORTS).map(([value, name]) => <MenuItem key={value} value={value}>{name}</MenuItem>)}
+      </TextField>
+    </>
+  )
+
+  const filterCount = chips.filter((chip) => chip.key !== 'q').length
+
   return (
     <Layout>
       <Typography variant="h4" component="h1" sx={{ mb: 2 }}>Tickets</Typography>
@@ -134,50 +209,16 @@ export default function TicketsPage() {
 
       <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
         <Stack spacing={2}>
-          <TextField size="small" label="Search" placeholder="Ticket number (TKT-1001), title or description"
-            value={search} onChange={(e) => setSearch(e.target.value)} fullWidth />
-          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-            <TextField {...selectProps('status', 'Status')}>
-              <MenuItem value="">Any</MenuItem>
-              {Object.entries(STATUS_NAMES).map(([value, name]) => <MenuItem key={value} value={value}>{name}</MenuItem>)}
-            </TextField>
-            <TextField {...selectProps('priority', 'Priority')}>
-              <MenuItem value="">Any</MenuItem>
-              {Object.entries(PRIORITY_NAMES).map(([value, name]) => <MenuItem key={value} value={value}>{name}</MenuItem>)}
-            </TextField>
-            <TextField {...selectProps('category_id', 'Category')}>
-              <MenuItem value="">Any</MenuItem>
-              {categories.map((c) => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
-            </TextField>
-            <TextField {...selectProps('building_id', 'Building')}>
-              <MenuItem value="">Any</MenuItem>
-              {buildings.map((b) => <MenuItem key={b.id} value={b.id}>{b.name}</MenuItem>)}
-            </TextField>
-            <TextField {...selectProps('floor_id', 'Floor')} disabled={!filters.building_id}>
-              <MenuItem value="">Any</MenuItem>
-              {floors.map((f) => <MenuItem key={f.id} value={f.id}>{f.name}</MenuItem>)}
-            </TextField>
-            {isAdmin && (
-              // Type part of a name to narrow the list. Empty = anyone.
-              <Autocomplete size="small" sx={{ minWidth: 240 }} options={assigneeOptions}
-                value={assigneeOptions.find((o) => String(o.id) === String(filters.assigned_to)) ?? null}
-                onChange={(e, option) => setFilter('assigned_to', option ? option.id : '')}
-                getOptionLabel={(o) => o.label} isOptionEqualToValue={(o, v) => o.id === v.id}
-                renderInput={(inputProps) => <TextField {...inputProps} label="Assigned to" placeholder="Type a name" />} />
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <TextField size="small" label="Search" placeholder={isPhone ? 'Number, title or description' : 'Ticket number (TKT-1001), title or description'}
+              value={search} onChange={(e) => setSearch(e.target.value)} fullWidth />
+            {isPhone && (
+              <Button variant="outlined" startIcon={<FilterList />} onClick={() => setFiltersOpen(true)} sx={{ flexShrink: 0 }}>
+                Filters{filterCount > 0 && ` (${filterCount})`}
+              </Button>
             )}
-            <TextField {...selectProps('escalation', 'Escalation')}>
-              <MenuItem value="">Any</MenuItem>
-              {Object.entries(ESCALATION_NAMES).map(([value, name]) => <MenuItem key={value} value={value}>{name}</MenuItem>)}
-            </TextField>
-            <TextField size="small" type="date" label="Reported from" value={filters.from}
-              onChange={(e) => setFilter('from', e.target.value)} slotProps={{ inputLabel: { shrink: true } }} />
-            <TextField size="small" type="date" label="Reported to" value={filters.to}
-              onChange={(e) => setFilter('to', e.target.value)} slotProps={{ inputLabel: { shrink: true } }} />
-            <TextField select size="small" label="Sort" value={sort} onChange={(e) => { setSort(e.target.value); setPage(0) }}
-              sx={{ minWidth: 200 }}>
-              {Object.entries(SORTS).map(([value, name]) => <MenuItem key={value} value={value}>{name}</MenuItem>)}
-            </TextField>
           </Box>
+          {!isPhone && <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>{filterControls}</Box>}
           {chips.length > 0 && (
             <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
               {chips.map((chip) => (
@@ -190,45 +231,79 @@ export default function TicketsPage() {
         </Stack>
       </Paper>
 
-      <TableContainer component={Paper} variant="outlined">
-        <Table size="small">
-          <TableHead>
-            <TableRow>
-              <TableCell>Ticket</TableCell>
-              <TableCell>Title</TableCell>
-              <TableCell>Status</TableCell>
-              <TableCell>Priority</TableCell>
-              <TableCell>Category</TableCell>
-              <TableCell>Location</TableCell>
-              <TableCell>Reported by</TableCell>
-              <TableCell>Assigned to</TableCell>
-              <TableCell>Reported</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {tickets === null ? (
-              <TableRow><TableCell colSpan={9}>Loading…</TableCell></TableRow>
-            ) : tickets.length === 0 ? (
-              <TableRow><TableCell colSpan={9}>No tickets match.</TableCell></TableRow>
-            ) : tickets.map((t) => (
-              <TableRow key={t.id} hover onClick={() => navigate(`/tickets/${t.id}`)} sx={{ cursor: 'pointer' }}>
-                <TableCell sx={{ whiteSpace: 'nowrap' }}>{t.number}</TableCell>
-                <TableCell>{t.title}</TableCell>
-                <TableCell><StatusChip status={t.status} /></TableCell>
-                <TableCell><PriorityChip priority={t.priority} /></TableCell>
-                <TableCell>{t.category_name}</TableCell>
-                <TableCell>{formatLocation(t)}</TableCell>
-                <TableCell>{t.reporter_name}</TableCell>
-                <TableCell>{t.assignee_name || '—'}</TableCell>
-                <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatDate(t.created_at)}</TableCell>
+      {isPhone && (
+        <Drawer anchor="bottom" open={filtersOpen} onClose={() => setFiltersOpen(false)}
+          slotProps={{ paper: { sx: { borderTopLeftRadius: 16, borderTopRightRadius: 16, maxHeight: '85vh' } } }}>
+          <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 2, '& > .MuiFormControl-root, & > .MuiAutocomplete-root': { width: '100%' } }}>
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              <Typography variant="h6" component="h2" sx={{ flexGrow: 1 }}>Filters</Typography>
+              <Button onClick={clearAll}>Clear all</Button>
+            </Box>
+            {filterControls}
+            <Button variant="contained" size="large" onClick={() => setFiltersOpen(false)}>
+              Show {result ? result.total.toLocaleString() : ''} tickets
+            </Button>
+          </Box>
+        </Drawer>
+      )}
+
+      {isPhone ? (
+        <>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            {result ? `${result.total.toLocaleString()} tickets · ${SORTS[sort].toLowerCase()}` : 'Loading…'}
+          </Typography>
+          <Stack spacing={1}>
+            {tickets?.length === 0 && <Typography color="text.secondary">No tickets match.</Typography>}
+            {tickets?.map((t) => <TicketCard key={t.id} ticket={t} />)}
+          </Stack>
+          <Paper variant="outlined" sx={{ mt: 1.5 }}>
+            {/* On a phone the list is always 25 a page, so the counter and arrows fit. */}
+            <TablePagination component="div" count={result?.total ?? 0} page={page} rowsPerPage={perPage}
+              rowsPerPageOptions={[]} onPageChange={(e, next) => setPage(next)}
+              onRowsPerPageChange={(e) => { setPerPage(Number(e.target.value)); setPage(0) }} />
+          </Paper>
+        </>
+      ) : (
+        <TableContainer component={Paper} variant="outlined">
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Ticket</TableCell>
+                <TableCell>Title</TableCell>
+                <TableCell>Status</TableCell>
+                <TableCell>Priority</TableCell>
+                <TableCell>Category</TableCell>
+                <TableCell>Location</TableCell>
+                <TableCell>Reported by</TableCell>
+                <TableCell>Assigned to</TableCell>
+                <TableCell>Reported</TableCell>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-        <TablePagination component="div" count={result?.total ?? 0} page={page} rowsPerPage={perPage}
-          rowsPerPageOptions={[25, 50, 100]} onPageChange={(e, next) => setPage(next)}
-          onRowsPerPageChange={(e) => { setPerPage(Number(e.target.value)); setPage(0) }} />
-      </TableContainer>
+            </TableHead>
+            <TableBody>
+              {tickets === null ? (
+                <TableRow><TableCell colSpan={9}>Loading…</TableCell></TableRow>
+              ) : tickets.length === 0 ? (
+                <TableRow><TableCell colSpan={9}>No tickets match.</TableCell></TableRow>
+              ) : tickets.map((t) => (
+                <TableRow key={t.id} hover onClick={() => navigate(`/tickets/${t.id}`)} sx={{ cursor: 'pointer' }}>
+                  <TableCell sx={{ whiteSpace: 'nowrap' }}>{t.number}</TableCell>
+                  <TableCell>{t.title}</TableCell>
+                  <TableCell><StatusChip status={t.status} /></TableCell>
+                  <TableCell><PriorityChip priority={t.priority} /></TableCell>
+                  <TableCell>{t.category_name}</TableCell>
+                  <TableCell>{formatLocation(t)}</TableCell>
+                  <TableCell>{t.reporter_name}</TableCell>
+                  <TableCell>{t.assignee_name || '—'}</TableCell>
+                  <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatDate(t.created_at)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+          <TablePagination component="div" count={result?.total ?? 0} page={page} rowsPerPage={perPage}
+            rowsPerPageOptions={[25, 50, 100]} onPageChange={(e, next) => setPage(next)}
+            onRowsPerPageChange={(e) => { setPerPage(Number(e.target.value)); setPage(0) }} />
+        </TableContainer>
+      )}
 
       <Snackbar open={!!message} message={message} autoHideDuration={4000} onClose={() => setMessage('')}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} />

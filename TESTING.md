@@ -17,8 +17,8 @@ engineer can't skip from Assigned to Resolved, and that the 5-ticket cap is neve
 | Suite | Result | Coverage |
 |---|---|---|
 | Backend | 304 passed | 98% of our backend code (statements) |
-| Frontend | 158 passed | 83% of statements, 86% of lines |
-| End-to-end | 5 passed (4 journeys) | All 3 roles: submit → assign → work → resolve → close |
+| Frontend | 169 passed | 83% of statements, 85% of lines |
+| End-to-end | 7 passed (5 journeys) | All 3 roles, on a desktop and on a phone (375 px) |
 
 To make sure the tests can fail, three rules were broken on purpose, one at a time: names
 allowing `!`, engineers skipping a step, and no ticket cap. Each one made its tests fail. The
@@ -73,6 +73,10 @@ They fake the API, so they need nothing running.
   - The settings are in `vite.config.js`.
   - `src/test/setup.js` runs before each file.
   - `src/test/renderWith.jsx` draws a component inside the app's theme and router.
+    `renderWith(ui, { phone: true })` tells React Responsive the screen is 375 px wide.
+- **The phone layout** is tested in `src/pages/PhoneLayout.test.jsx`: the ☰ menu (with
+  availability for engineers), the Tickets cards and filters panel, the Facilities drill-down and ⋮
+  menu, the engineer cards, full-screen popups, and the date drop-down.
 
 ### End-to-end (from the `frontend` folder)
 
@@ -93,6 +97,7 @@ npx cypress open    # the visual runner: watch each step in a browser
 | `escalation.cy.js` | An employee picks Request Critical: without a reason it's refused; with one it's submitted at Medium → the admin approves it under Escalations → it's Critical |
 | `facilities.cy.js` | An admin adds a building called `!Hospital` (refused, with the message), fixes the name, and sees its floors and seat codes |
 | `access.cy.js` | An employee typing an admin page's address is sent to their dashboard; signed-out people go to Log in |
+| `phone.cy.js` | At iPhone SE size (375 × 667): an employee submits in the full-screen popup → the engineer resolves it → an admin finds it through the ☰ menu and Tickets search and closes it; every page is checked to fit the screen (no sideways scrolling) |
 
 Each journey deletes what it created, so the data is the same afterwards.
 

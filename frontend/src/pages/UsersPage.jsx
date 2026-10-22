@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from 'react'
 import {
-  Alert, Box, Button, Chip, MenuItem, Paper, Snackbar, Tab, Table, TableBody, TableCell,
+  Alert, Box, Button, Card, CardActionArea, Chip, MenuItem, Paper, Snackbar, Stack, Tab, Table, TableBody, TableCell,
   TableContainer, TableHead, TablePagination, TableRow, Tabs, TextField, Typography,
 } from '@mui/material'
 import Layout from '../components/Layout'
@@ -11,6 +11,7 @@ import EngineerTable from '../components/EngineerTable'
 import PasswordResetDialog from '../components/PasswordResetDialog'
 import UserDialog from '../components/UserDialog'
 import { api } from '../services/api'
+import { useIsPhone } from '../services/useIsPhone'
 import { ROLE_NAMES } from '../roles'
 
 function AccountsTab({ onEdit, reloads }) {
@@ -35,6 +36,7 @@ function AccountsTab({ onEdit, reloads }) {
   }, [query, reloads])
 
   const accounts = result?.accounts ?? null
+  const isPhone = useIsPhone()
 
   return (
     <>
@@ -48,35 +50,62 @@ function AccountsTab({ onEdit, reloads }) {
           {Object.entries(ROLE_NAMES).map(([value, name]) => <MenuItem key={value} value={value}>{name}</MenuItem>)}
         </TextField>
       </Box>
-      <TableContainer component={Paper} variant="outlined">
-        <Table size="small">
-          <TableHead>
-            <TableRow>
-              <TableCell>Name</TableCell>
-              <TableCell>Email</TableCell>
-              <TableCell>Role</TableCell>
-              <TableCell>Status</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {accounts === null ? (
-              <TableRow><TableCell colSpan={4}>Loading…</TableCell></TableRow>
-            ) : accounts.length === 0 ? (
-              <TableRow><TableCell colSpan={4}>No accounts match.</TableCell></TableRow>
-            ) : accounts.map((a) => (
-              <TableRow key={a.id} hover onClick={() => onEdit(a)} sx={{ cursor: 'pointer' }}>
-                <TableCell>{a.full_name}</TableCell>
-                <TableCell>{a.email}</TableCell>
-                <TableCell><Chip size="small" label={ROLE_NAMES[a.role]} /></TableCell>
-                <TableCell>{a.is_active ? 'Active' : 'Deactivated'}</TableCell>
-              </TableRow>
+      {isPhone ? (
+        <>
+          <Stack spacing={1}>
+            {accounts === null && <Typography color="text.secondary">Loading…</Typography>}
+            {accounts?.length === 0 && <Typography color="text.secondary">No accounts match.</Typography>}
+            {accounts?.map((a) => (
+              <Card key={a.id} variant="outlined">
+                <CardActionArea onClick={() => onEdit(a)} sx={{ p: 1.5 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Typography sx={{ fontWeight: 500, flexGrow: 1 }}>{a.full_name}</Typography>
+                    <Chip size="small" label={ROLE_NAMES[a.role]} />
+                  </Box>
+                  <Typography variant="body2" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>{a.email}</Typography>
+                  {!a.is_active && <Typography variant="body2" color="error.main">Deactivated</Typography>}
+                </CardActionArea>
+              </Card>
             ))}
-          </TableBody>
-        </Table>
-        <TablePagination component="div" count={result?.total ?? 0} page={page} rowsPerPage={perPage}
-          rowsPerPageOptions={[25, 50, 100]} onPageChange={(e, next) => setPage(next)}
-          onRowsPerPageChange={(e) => { setPerPage(Number(e.target.value)); setPage(0) }} />
-      </TableContainer>
+          </Stack>
+          <Paper variant="outlined" sx={{ mt: 1.5 }}>
+            {/* On a phone the list is always 25 a page, so the counter and arrows fit. */}
+            <TablePagination component="div" count={result?.total ?? 0} page={page} rowsPerPage={perPage}
+              rowsPerPageOptions={[]} onPageChange={(e, next) => setPage(next)}
+              onRowsPerPageChange={(e) => { setPerPage(Number(e.target.value)); setPage(0) }} />
+          </Paper>
+        </>
+      ) : (
+        <TableContainer component={Paper} variant="outlined">
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Name</TableCell>
+                <TableCell>Email</TableCell>
+                <TableCell>Role</TableCell>
+                <TableCell>Status</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {accounts === null ? (
+                <TableRow><TableCell colSpan={4}>Loading…</TableCell></TableRow>
+              ) : accounts.length === 0 ? (
+                <TableRow><TableCell colSpan={4}>No accounts match.</TableCell></TableRow>
+              ) : accounts.map((a) => (
+                <TableRow key={a.id} hover onClick={() => onEdit(a)} sx={{ cursor: 'pointer' }}>
+                  <TableCell>{a.full_name}</TableCell>
+                  <TableCell>{a.email}</TableCell>
+                  <TableCell><Chip size="small" label={ROLE_NAMES[a.role]} /></TableCell>
+                  <TableCell>{a.is_active ? 'Active' : 'Deactivated'}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+          <TablePagination component="div" count={result?.total ?? 0} page={page} rowsPerPage={perPage}
+            rowsPerPageOptions={[25, 50, 100]} onPageChange={(e, next) => setPage(next)}
+            onRowsPerPageChange={(e) => { setPerPage(Number(e.target.value)); setPage(0) }} />
+        </TableContainer>
+      )}
     </>
   )
 }
