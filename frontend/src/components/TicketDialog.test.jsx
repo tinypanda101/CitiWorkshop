@@ -82,15 +82,15 @@ describe('TicketDialog', () => {
 
   it('shows the API\'s message under the field it is about', async () => {
     answer(() => Promise.reject(new ApiError(400, 'validation_error', 'Please check the highlighted fields',
-      { seat_code: 'There is no seat HQ-999 on Floor 1' })))
+      { seat_code: 'There is no seat HQ-1-99 on Floor 1' })))
     const user = userEvent.setup()
     const onSaved = vi.fn()
     renderWith(<TicketDialog onSaved={onSaved} onClose={vi.fn()} />)
     await fillIn(user)
-    await user.type(screen.getByRole('textbox', { name: 'Seat' }), 'HQ-999')
+    await user.type(screen.getByRole('textbox', { name: 'Seat' }), 'HQ-1-99')
     await user.click(screen.getByRole('button', { name: 'Submit' }))
 
-    expect(await screen.findByText('There is no seat HQ-999 on Floor 1')).toBeInTheDocument()
+    expect(await screen.findByText('There is no seat HQ-1-99 on Floor 1')).toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: 'Seat' })).toHaveAttribute('aria-invalid', 'true')
     expect(onSaved).not.toHaveBeenCalled()
   })

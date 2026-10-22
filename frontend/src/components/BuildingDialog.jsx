@@ -1,6 +1,6 @@
 // Add or edit a building (pass `building` to edit). When adding, it also asks how many floors
 // the building has and shows one row per floor: its name (pre-filled "Floor 1", "Floor 2"...)
-// and how many seats it has. The API creates the floors and seats (HQ-101, HQ-102...) together.
+// and how many seats it has. The API creates the floors and seats (HQ-1-01, HQ-1-02...) together.
 
 import { useState } from 'react'
 import {
@@ -100,7 +100,7 @@ export default function BuildingDialog({ building, onSave, onClose }) {
                     : fieldErrors.floors || `1 to ${MAX_FLOORS}. You can rename floors and change seats below.`} />
                 <Typography variant="body2" color="text.secondary">
                   {floors.length} {floors.length === 1 ? 'floor' : 'floors'}, {totalSeats} seats. Seats are numbered
-                  {values.code ? ` ${values.code.toUpperCase()}-101, ${values.code.toUpperCase()}-102…` : ' CODE-101, CODE-102…'}
+                  {values.code ? ` ${values.code.toUpperCase()}-1-01, ${values.code.toUpperCase()}-1-02…` : ' CODE-1-01, CODE-1-02…'}
                 </Typography>
                 <Box sx={{ display: 'grid', gap: 1.5, maxHeight: 320, overflowY: 'auto', pt: 1 }}>
                   {floors.map((floor, i) => (

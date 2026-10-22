@@ -143,8 +143,8 @@ def test_seat_code_only_allows_letters_numbers_and_hyphens(db, code):
 def test_a_seat_code_cant_be_used_twice_on_a_floor(db):
     admin = make_user(db, "admin")
     floor = make_building(db).floors[0]
-    response = api("facilities").post(f"/floors/{floor.id}/seats", json={"code": "hq-101"}, headers=auth(admin))
-    assert response.status_code == 409  # HQ-101 already exists (codes are saved in capitals)
+    response = api("facilities").post(f"/floors/{floor.id}/seats", json={"code": "hq-1-01"}, headers=auth(admin))
+    assert response.status_code == 409  # HQ-1-01 already exists (codes are saved in capitals)
 
 
 def test_adding_seats_past_500_on_a_floor_is_refused(db):
@@ -227,8 +227,8 @@ def test_ticket_floor_must_be_in_the_chosen_building(db):
 def test_ticket_seat_must_be_a_real_seat_on_that_floor(db):
     reporter = make_user(db)
     building = make_building(db, floors=2)
-    # HQ-201 is a real seat, but on Floor 2, not Floor 1.
-    response = api("tickets").post("/", json=ticket_body(db, building, seat_code="HQ-201"), headers=auth(reporter))
+    # HQ-2-01 is a real seat, but on Floor 2, not Floor 1.
+    response = api("tickets").post("/", json=ticket_body(db, building, seat_code="HQ-2-01"), headers=auth(reporter))
     assert response.status_code == 400
     assert "seat_code" in error(response)["details"]
 
@@ -236,9 +236,9 @@ def test_ticket_seat_must_be_a_real_seat_on_that_floor(db):
 def test_ticket_seat_code_is_matched_in_any_case(db):
     reporter = make_user(db)
     building = make_building(db)
-    response = api("tickets").post("/", json=ticket_body(db, building, seat_code="hq-102"), headers=auth(reporter))
+    response = api("tickets").post("/", json=ticket_body(db, building, seat_code="hq-1-02"), headers=auth(reporter))
     assert response.status_code == 201
-    assert response.json()["seat_code"] == "HQ-102"
+    assert response.json()["seat_code"] == "HQ-1-02"
 
 
 def test_ticket_with_an_unknown_category_is_refused(db):

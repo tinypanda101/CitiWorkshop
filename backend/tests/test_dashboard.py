@@ -131,7 +131,7 @@ def test_locations_drill_down_adds_up(known):
     assert {r["label"]: r["value"] for r in floors["rows"]} == {"Floor 1": 5, "Floor 2": 2}
 
     seats = api("dashboard").get(f"/locations?building_id={hq.id}&floor_id={hq.floors[0].id}", headers=headers).json()
-    assert {r["label"]: r["value"] for r in seats["rows"]} == {"No seat given": 3, "HQ-101": 2}
+    assert {r["label"]: r["value"] for r in seats["rows"]} == {"No seat given": 3, "HQ-1-01": 2}
 
 
 def test_locations_refuses_a_floor_from_another_building(known):

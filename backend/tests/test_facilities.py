@@ -33,19 +33,28 @@ def test_a_new_building_gets_its_floors_and_each_floors_own_seats(db, admin):
     b = create_building(admin, [{"name": "Ground", "seats": 2}, {"name": "Empty", "seats": 0}, {"name": "Top", "seats": 3}])
     floors = floors_of(db, b["id"])
     assert [(f.level, f.name) for f in floors] == [(1, "Ground"), (2, "Empty"), (3, "Top")]
-    assert seat_codes(db, floors[0].id) == ["TB-101", "TB-102"]
+    assert seat_codes(db, floors[0].id) == ["TB-1-01", "TB-1-02"]
     assert seat_codes(db, floors[1].id) == []
-    assert seat_codes(db, floors[2].id) == ["TB-301", "TB-302", "TB-303"]
+    assert seat_codes(db, floors[2].id) == ["TB-3-01", "TB-3-02", "TB-3-03"]
     assert b["floor_count"] == 3
 
 
 def test_floors_with_more_than_99_seats_use_three_digits(db, admin):
     b = create_building(admin, [{"name": "Big Floor", "seats": 120}])
     codes = seat_codes(db, floors_of(db, b["id"])[0].id)
-    assert (codes[0], codes[-1], len(codes)) == ("TB-1001", "TB-1120", 120)
+    assert (codes[0], codes[-1], len(codes)) == ("TB-1-001", "TB-1-120", 120)
 
 
-@pytest.mark.parametrize("level, first_seat", [(0, "TB-G01"), (-1, "TB-B101"), (12, "TB-1201")])
+def test_seat_codes_never_look_alike_across_floors(db, admin):
+    # Floor 1 seat 1 of a big floor and Floor 10 seat 1 used to both be TB-1001.
+    floors = [{"name": f"Floor {n}", "seats": 120 if n == 1 else 1} for n in range(1, 11)]
+    b = create_building(admin, floors)
+    all_floors = floors_of(db, b["id"])
+    assert seat_codes(db, all_floors[0].id)[0] == "TB-1-001"
+    assert seat_codes(db, all_floors[9].id) == ["TB-10-01"]
+
+
+@pytest.mark.parametrize("level, first_seat", [(0, "TB-G-01"), (-1, "TB-B1-01"), (12, "TB-12-01")])
 def test_ground_and_basement_floors_have_their_own_seat_codes(db, admin, level, first_seat):
     b = create_building(admin, [{"name": "Floor 1", "seats": 1}])
     response = api("facilities").post(f"/buildings/{b['id']}/floors", json={"level": level, "name": "Extra", "seats": 2},
@@ -60,15 +69,15 @@ def test_add_several_continues_the_numbering(db, admin):
     response = api("facilities").post(f"/floors/{floor_id}/seats/bulk", json={"count": 3}, headers=auth(admin))
     assert response.status_code == 201
     assert response.json()["seat_count"] == 5
-    assert seat_codes(db, floor_id) == ["TB-101", "TB-102", "TB-103", "TB-104", "TB-105"]
+    assert seat_codes(db, floor_id) == ["TB-1-01", "TB-1-02", "TB-1-03", "TB-1-04", "TB-1-05"]
 
 
 def test_add_several_skips_codes_already_taken(db, admin):
     b = create_building(admin, [{"name": "Floor 1", "seats": 1}])
     floor_id = floors_of(db, b["id"])[0].id
-    api("facilities").post(f"/floors/{floor_id}/seats", json={"code": "TB-103"}, headers=auth(admin))  # typed by hand
+    api("facilities").post(f"/floors/{floor_id}/seats", json={"code": "TB-1-03"}, headers=auth(admin))  # typed by hand
     api("facilities").post(f"/floors/{floor_id}/seats/bulk", json={"count": 2}, headers=auth(admin))
-    assert seat_codes(db, floor_id) == ["TB-101", "TB-103", "TB-104", "TB-105"]
+    assert seat_codes(db, floor_id) == ["TB-1-01", "TB-1-03", "TB-1-04", "TB-1-05"]
 
 
 def test_changing_the_code_doesnt_rename_existing_seats(db, admin):
@@ -76,7 +85,7 @@ def test_changing_the_code_doesnt_rename_existing_seats(db, admin):
     response = api("facilities").put(f"/buildings/{building.id}",
                                      json={"code": "HX", "name": "Head Office", "address": "1 Main St"}, headers=auth(admin))
     assert response.json()["code"] == "HX"
-    assert seat_codes(db, building.floors[0].id)[0] == "HQ-101"
+    assert seat_codes(db, building.floors[0].id)[0] == "HQ-1-01"
 
 
 def test_everyone_signed_in_can_read_facilities(db):
@@ -93,7 +102,7 @@ def test_everyone_signed_in_can_read_facilities(db):
 def test_deleting_something_a_ticket_uses_is_refused(db, admin, kind):
     reporter = make_user(db)
     building = make_building(db)
-    submit(db, reporter, building, seat_code="HQ-101")
+    submit(db, reporter, building, seat_code="HQ-1-01")
     path = {"building": f"/buildings/{building.id}", "floor": f"/floors/{building.floors[0].id}",
             "seat": f"/seats/{building.floors[0].seats[0].id}"}[kind]
     response = api("facilities").delete(path, headers=auth(admin))

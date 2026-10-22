@@ -33,6 +33,6 @@ describe('Adding a building', () => {
     cy.contains('Cypress Test Hospital (CYT)').click()
     cy.contains('h2', 'Floors in Cypress Test Hospital')
     cy.contains('Floor 2').click()
-    cy.contains('CYT-201')
+    cy.contains('CYT-2-01')
   })
 })

@@ -10,7 +10,7 @@ from _shared.validation import check, check_email, check_person, check_phone
 # (People's names, emails and phones use the shared rules in _shared/validation.py.)
 NAME = re.compile(r"[A-Za-z0-9 -]+")  # building and floor names: "North Tower - East Wing"
 CODE = re.compile(r"[A-Z0-9]{2,6}")  # building codes: "HQ", "RT2"
-SEAT = re.compile(r"[A-Z0-9-]+")  # seat codes: "HQ-201"
+SEAT = re.compile(r"[A-Z0-9-]+")  # seat codes: "HQ-2-01"
 ADDRESS = re.compile(r"[A-Za-z0-9 ,.\-#/']+")  # "1200 Main St, Suite #4"
 
 MAX_FLOORS = 100
@@ -124,7 +124,7 @@ class SeatIn(BaseModel):
     @field_validator("code")
     @classmethod
     def clean_code(cls, value):
-        return check(value.upper(), SEAT, "Only letters, numbers and hyphens, e.g. HQ-201")
+        return check(value.upper(), SEAT, "Only letters, numbers and hyphens, e.g. HQ-2-01")
 
 
 class SeatCount(BaseModel):

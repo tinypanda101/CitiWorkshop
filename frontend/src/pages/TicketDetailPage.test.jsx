@@ -12,7 +12,7 @@ vi.mock('../services/AuthContext', () => ({ useAuth: () => auth }))
 vi.mock('../services/api', async (original) => ({ ...(await original()), api: vi.fn() }))
 
 const TICKET = { id: 42, number: 'TKT-1042', title: 'Leaking tap', description: 'Drips all day', status: 'blocked',
-  priority: 'medium', category_name: 'Plumbing', building_name: 'Head Office', floor_name: 'Floor 1', seat_code: 'HQ-101',
+  priority: 'medium', category_name: 'Plumbing', building_name: 'Head Office', floor_name: 'Floor 1', seat_code: 'HQ-1-01',
   reporter_id: 9, reporter_name: 'Mary Smith', reporter_email: 'mary@acme.inc', assignee_id: 5, assignee_name: 'Pat Jones',
   assigned_at: '2026-10-20T10:00:00Z', created_at: '2026-10-20T09:00:00Z', due_at: '2026-10-23T09:00:00Z',
   updated_at: '2026-10-20T11:00:00Z', blocked_reason: 'Waiting for a part', escalation_status: 'none' }

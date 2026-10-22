@@ -131,11 +131,11 @@ def make_user(db, role="employee", name="Mary Smith", email=None, category_name=
 
 
 def make_building(db, code="HQ", name="Head Office", floors=2, seats=3):
-    """A building with floors "Floor 1", "Floor 2"... (levels 1, 2...) and seats HQ-101, HQ-102..."""
+    """A building with floors "Floor 1", "Floor 2"... (levels 1, 2...) and seats HQ-1-01, HQ-1-02..."""
     building = Building(code=code, name=name, address="1 Main Street")
     for level in range(1, floors + 1):
         floor = Floor(level=level, name=f"Floor {level}")
-        floor.seats = [Seat(code=f"{code}-{level}{n:02d}") for n in range(1, seats + 1)]
+        floor.seats = [Seat(code=f"{code}-{level}-{n:02d}") for n in range(1, seats + 1)]
         building.floors.append(floor)
     db.add(building)
     db.commit()

@@ -16,7 +16,7 @@ engineer can't skip from Assigned to Resolved, and that the 5-ticket cap is neve
 
 | Suite | Result | Coverage |
 |---|---|---|
-| Backend | 303 passed | 98% of our backend code (statements) |
+| Backend | 304 passed | 98% of our backend code (statements) |
 | Frontend | 158 passed | 83% of statements, 86% of lines |
 | End-to-end | 5 passed (4 journeys) | All 3 roles: submit → assign → work → resolve → close |
 
@@ -110,12 +110,6 @@ Each journey deletes what it created, so the data is the same afterwards.
   - Locally they match, but AWS uses UTC. So someone in New York choosing "today" after 8 pm local
     time would see the UTC day.
   - The fix would be for the browser to send its time zone with the dates.
-- **Seat codes can look alike across floors.**
-  - On a floor with more than 99 seats, seat 001 on Floor 1 is `HQ-1001`, which is also what seat
-    01 on Floor 10 is called.
-  - They never clash, because seats are looked up within the chosen floor, but a person reading
-    `HQ-1001` can't tell which floor it's on.
-  - A separator (`HQ-1-001`) would fix it.
 - **MUI's auto-sizing text boxes, at machine speed.**
   - When Cypress types at its normal 10 ms a key into a multi-line box, React can report
     "Maximum update depth exceeded" at the moment the text wraps onto a second line.

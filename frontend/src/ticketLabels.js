@@ -18,7 +18,7 @@ export function formatDate(iso) {
   return new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' })
 }
 
-// "Headquarters · Floor 1 · HQ-101" (the seat is left out when there isn't one).
+// "Headquarters · Floor 1 · HQ-1-01" (the seat is left out when there isn't one).
 export function formatLocation(ticket) {
   return [ticket.building_name, ticket.floor_name, ticket.seat_code].filter(Boolean).join(' · ')
 }

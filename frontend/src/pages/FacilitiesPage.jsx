@@ -32,7 +32,7 @@ const KINDS = {
     addFields: [ // adding a floor also asks how many seats it has
       { name: 'level', label: 'Level', type: 'number', hint: '0 = ground, negative = basement' },
       { name: 'name', label: 'Name', hint: 'Letters, numbers, spaces and hyphens, e.g. Floor 2' },
-      { name: 'seats', label: 'Number of seats', type: 'number', optional: true, hint: 'Numbered automatically, e.g. HQ-201, HQ-202… (0 to 500)' },
+      { name: 'seats', label: 'Number of seats', type: 'number', optional: true, hint: 'Numbered automatically, e.g. HQ-2-01, HQ-2-02… (0 to 500)' },
     ],
     primary: (f) => f.name,
     secondary: (f) => `Level ${f.level} · ${f.seat_count} ${f.seat_count === 1 ? 'seat' : 'seats'}`,
@@ -41,7 +41,7 @@ const KINDS = {
   },
   seat: {
     noun: 'seat',
-    fields: [{ name: 'code', label: 'Seat code', hint: 'Letters, numbers and hyphens, e.g. HQ-201' }],
+    fields: [{ name: 'code', label: 'Seat code', hint: 'Letters, numbers and hyphens, e.g. HQ-2-01' }],
     primary: (s) => s.code,
     secondary: () => null,
     label: (s) => s.code,

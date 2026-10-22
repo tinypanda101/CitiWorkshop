@@ -60,18 +60,19 @@ def level_tag(level):
 
 def add_seats(db, floor, building_code, count):
     """
-    Adds `count` seats to the floor, numbered after the ones it has: HQ-201, HQ-202...
-    Floors with more than 99 seats use three digits (HQ-2101). Codes already used are skipped.
+    Adds `count` seats to the floor, numbered after the ones it has: HQ-2-01, HQ-2-02...
+    (building code - floor - seat). Floors with more than 99 seats use three digits (HQ-2-101).
+    Codes already used are skipped.
     """
     taken = set(db.scalars(select(Seat.code).where(Seat.floor_id == floor.id))) if floor.id else set()
     digits = 3 if len(taken) + count > 99 else 2
     number = len(taken)
     for _ in range(count):
         number += 1
-        code = f"{building_code}-{level_tag(floor.level)}{number:0{digits}d}"
+        code = f"{building_code}-{level_tag(floor.level)}-{number:0{digits}d}"
         while code in taken:
             number += 1
-            code = f"{building_code}-{level_tag(floor.level)}{number:0{digits}d}"
+            code = f"{building_code}-{level_tag(floor.level)}-{number:0{digits}d}"
         taken.add(code)
         floor.seats.append(Seat(code=code))
 

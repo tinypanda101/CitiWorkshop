@@ -214,7 +214,7 @@ def make_buildings(db):
         for level in range(1, random.randint(4, 20) + 1):  # nosec B311
             floor = Floor(level=level, name=f"Floor {level}")
             seats = random.randint(20, 60)  # nosec B311
-            floor.seats = [Seat(code=f"{code}-{level}{n:02d}") for n in range(1, seats + 1)]
+            floor.seats = [Seat(code=f"{code}-{level}-{n:02d}") for n in range(1, seats + 1)]
             building.floors.append(floor)
         db.add(building)
     db.commit()

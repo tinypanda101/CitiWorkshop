@@ -30,7 +30,7 @@ const LEVELS = {
   '': { level: 'buildings', rows: [{ id: 5, label: 'Canary Wharf Office', value: 150 }] },
   'building_id=5': { level: 'floors', building_name: 'Canary Wharf Office', rows: [{ id: 54, label: 'Floor 5', value: 99 }] },
   'building_id=5&floor_id=54': { level: 'seats', building_name: 'Canary Wharf Office', floor_name: 'Floor 5',
-    rows: [{ id: null, label: 'No seat given', value: 26 }, { id: 9, label: 'CW-518', value: 6 }] },
+    rows: [{ id: null, label: 'No seat given', value: 26 }, { id: 9, label: 'CW-5-18', value: 6 }] },
 }
 
 beforeEach(() => {
@@ -69,7 +69,7 @@ describe('AdminReportPage', () => {
     open('/reports/locations?from=2026-09-22&to=2026-10-21')
     await user.click(await screen.findByRole('button', { name: 'Canary Wharf Office' }))
     await user.click(await screen.findByRole('button', { name: 'Floor 5' }))
-    expect(await screen.findByText('CW-518')).toBeInTheDocument()
+    expect(await screen.findByText('CW-5-18')).toBeInTheDocument()
     expect(screen.getByText('No seat given')).toBeInTheDocument()
     // The date range was kept at every level.
     expect(api).toHaveBeenLastCalledWith('dashboard', '/locations?from=2026-09-22&to=2026-10-21&building_id=5&floor_id=54')

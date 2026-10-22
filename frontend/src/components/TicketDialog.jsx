@@ -1,6 +1,6 @@
 // The popup for submitting a ticket, also used to edit one (pass `ticket`).
 // Building → Floor: the floor list loads once a building is picked. The seat is typed in
-// (e.g. HQ-201) and the API checks it is a real seat on that floor.
+// (e.g. HQ-2-01) and the API checks it is a real seat on that floor.
 // `onSaved` gets the saved ticket back from the API.
 
 import { useEffect, useState } from 'react'
@@ -124,7 +124,7 @@ export default function TicketDialog({ ticket, onSaved, onClose }) {
               <TextField select label="Floor" required fullWidth disabled={!values.building_id} {...fieldProps('floor_id')}>
                 {floors.map((f) => <MenuItem key={f.id} value={f.id}>{f.name}</MenuItem>)}
               </TextField>
-              <TextField label="Seat" fullWidth disabled={!values.floor_id} {...fieldProps('seat_code', 'Optional, e.g. HQ-201')} />
+              <TextField label="Seat" fullWidth disabled={!values.floor_id} {...fieldProps('seat_code', 'Optional, e.g. HQ-2-01')} />
             </Stack>
             {showPriority && (
               <div>

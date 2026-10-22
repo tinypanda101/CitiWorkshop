@@ -19,7 +19,7 @@ beforeEach(() => {
     if (options?.method === 'DELETE') return deleteResult()
     if (path === '/buildings') return Promise.resolve([BUILDING])
     if (path === '/buildings/1/floors') return Promise.resolve([{ id: 11, building_id: 1, level: 1, name: 'Floor 1', seat_count: 2 }])
-    if (path === '/floors/11/seats') return Promise.resolve([{ id: 101, floor_id: 11, code: 'HQ-101' }, { id: 102, floor_id: 11, code: 'HQ-102' }])
+    if (path === '/floors/11/seats') return Promise.resolve([{ id: 101, floor_id: 11, code: 'HQ-1-01' }, { id: 102, floor_id: 11, code: 'HQ-1-02' }])
     return Promise.resolve({})
   })
 })
@@ -27,7 +27,7 @@ beforeEach(() => {
 async function pickBuildingAndFloor(user) {
   await user.click(await screen.findByText('Head Office (HQ)'))
   await user.click(await screen.findByText('Floor 1'))
-  await screen.findByText('HQ-101')
+  await screen.findByText('HQ-1-01')
 }
 
 describe('FacilitiesPage', () => {
@@ -47,7 +47,7 @@ describe('FacilitiesPage', () => {
     await user.click(screen.getAllByRole('button', { name: /Delete/ })[1]) // the floor's delete button
     await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Delete' }))
     expect(await screen.findByText("Can't delete Floor 1. 3 tickets are linked to it.")).toBeInTheDocument()
-    expect(screen.getByText('HQ-101')).toBeInTheDocument()
+    expect(screen.getByText('HQ-1-01')).toBeInTheDocument()
   })
 
   it('after a delete it says so and goes back to nothing picked', async () => {
@@ -56,8 +56,8 @@ describe('FacilitiesPage', () => {
     await pickBuildingAndFloor(user)
     await user.click(screen.getAllByRole('button', { name: /Delete/ }).at(-1)) // the last seat's delete button
     await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Delete' }))
-    expect(await screen.findByText('HQ-102 was deleted')).toBeInTheDocument()
-    await waitFor(() => expect(screen.queryByText('HQ-101')).not.toBeInTheDocument())
+    expect(await screen.findByText('HQ-1-02 was deleted')).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByText('HQ-1-01')).not.toBeInTheDocument())
   })
 
   it('+ Add several adds seats to the picked floor', async () => {

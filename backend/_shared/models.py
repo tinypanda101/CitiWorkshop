@@ -99,7 +99,7 @@ class Building(Base):
     __tablename__ = "buildings"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    code: Mapped[str] = mapped_column(Text, unique=True)  # short, e.g. HQ; starts its seat codes (HQ-201)
+    code: Mapped[str] = mapped_column(Text, unique=True)  # short, e.g. HQ; starts its seat codes (HQ-2-01)
     name: Mapped[str] = mapped_column(Text, unique=True)
     address: Mapped[str] = mapped_column(Text)
     manager_name: Mapped[str | None] = mapped_column(Text)
