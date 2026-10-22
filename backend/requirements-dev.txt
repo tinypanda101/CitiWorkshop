@@ -1,0 +1,5 @@
+# For running the backend tests only (backend/tests). The Lambdas don't need these.
+# Install: .venv/bin/pip install -r backend/requirements-dev.txt
+pytest==9.1.1
+pytest-cov==7.1.0
+httpx2==2.16.0  # the HTTP client FastAPI's TestClient uses

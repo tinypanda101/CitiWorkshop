@@ -8,3 +8,6 @@
 
 # Folders starting with _ (shared code, workshop examples) are kept as they are.
 !/_*/*
+
+# The tests and their settings (backend/tests).
+!/tests/*.py

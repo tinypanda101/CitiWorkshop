@@ -1,0 +1,3 @@
+# What Cypress saves after a run (screenshots of failures, videos). Not part of the project.
+cypress/screenshots/
+cypress/videos/

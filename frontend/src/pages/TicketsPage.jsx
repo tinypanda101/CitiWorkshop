@@ -60,13 +60,15 @@ export default function TicketsPage() {
   }, [filters.building_id])
 
   // Wait until typing stops for 300 ms before searching, instead of one request per key.
+  // Only a changed search goes back to page 1 (not opening the page, or typing a space).
   useEffect(() => {
+    if (search.trim() === q) return
     const timer = setTimeout(() => {
       setQ(search.trim())
       setPage(0)
     }, 300)
     return () => clearTimeout(timer)
-  }, [search])
+  }, [search, q])
 
   // The query string for the API, e.g. "sort=newest&q=wifi&status=open".
   const params = new URLSearchParams({ sort, page: page + 1, per_page: perPage })

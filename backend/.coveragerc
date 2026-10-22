@@ -1,0 +1,14 @@
+# What `pytest --cov` measures: only our own code, not the libraries installed in each service folder.
+[run]
+include =
+    */backend/_shared/*.py
+    */backend/*/router.py
+    */backend/*/schemas.py
+    */backend/*/function.py
+omit =
+    */backend/_examples/*
+    */backend/tests/*
+
+[report]
+show_missing = true
+skip_empty = true
